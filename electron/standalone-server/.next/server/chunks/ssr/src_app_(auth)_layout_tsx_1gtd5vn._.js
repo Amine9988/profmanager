@@ -1,0 +1,3 @@
+module.exports=[90430,a=>{"use strict";var b=a.i(7997);a.s(["default",0,function({children:a}){return(0,b.jsxs)("div",{className:"relative min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4",children:[(0,b.jsx)("div",{className:"absolute inset-0 bg-grid-pattern opacity-[0.02] pointer-events-none"}),a]})}])},67782,a=>{a.n(a.i(90430))}];
+
+//# sourceMappingURL=src_app_%28auth%29_layout_tsx_1gtd5vn._.js.map

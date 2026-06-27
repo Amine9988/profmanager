@@ -1,0 +1,17 @@
+{
+  "node": {
+    "6064b637ee8fd03be10f00559d5adeb1c15f7a53e1": {
+      "workers": {
+        "app/(auth)/signup/page": {
+          "moduleId": 62996,
+          "async": false,
+          "exportedName": "signup",
+          "filename": "src/server/actions/auth.ts"
+        }
+      },
+      "exportedName": "signup",
+      "filename": "src/server/actions/auth.ts"
+    }
+  },
+  "edge": {}
+}

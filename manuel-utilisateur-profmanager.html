@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Manuel Utilisateur — ProfManager</title>
+<style>
+  :root {
+    --primary: #2563eb;
+    --primary-dark: #1d4ed8;
+    --sidebar-bg: #1e293b;
+    --sidebar-text: #cbd5e1;
+    --sidebar-active: #2563eb;
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --text: #1e293b;
+    --text-muted: #64748b;
+    --border: #e2e8f0;
+    --success: #16a34a;
+    --warning: #d97706;
+    --danger: #dc2626;
+    --radius: 8px;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; font-size: 16px; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.6;
+    display: flex;
+    min-height: 100vh;
+  }
+
+  /* Sidebar */
+  nav.sidebar {
+    position: fixed;
+    top: 0; left: 0;
+    width: 280px;
+    height: 100vh;
+    background: var(--sidebar-bg);
+    color: var(--sidebar-text);
+    overflow-y: auto;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+  }
+  nav.sidebar .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 20px;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #fff;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  nav.sidebar .logo svg { width: 28px; height: 28px; }
+  nav.sidebar .nav-section { padding: 16px 0; }
+  nav.sidebar .nav-section-title {
+    padding: 4px 20px 8px;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #64748b;
+    font-weight: 600;
+  }
+  nav.sidebar a {
+    display: block;
+    padding: 8px 20px 8px 24px;
+    color: var(--sidebar-text);
+    text-decoration: none;
+    font-size: 0.875rem;
+    border-left: 3px solid transparent;
+    transition: all 0.15s;
+  }
+  nav.sidebar a:hover { background: rgba(255,255,255,0.05); color: #fff; }
+  nav.sidebar a.active { color: #fff; border-left-color: var(--primary); background: rgba(37,99,235,0.15); }
+
+  /* Main */
+  main {
+    margin-left: 280px;
+    flex: 1;
+    max-width: 900px;
+    padding: 40px 48px 80px;
+  }
+
+  /* Hero */
+  .hero {
+    margin-bottom: 40px;
+    padding-bottom: 32px;
+    border-bottom: 1px solid var(--border);
+  }
+  .hero h1 { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
+  .hero p { color: var(--text-muted); font-size: 1.05rem; }
+
+  /* Sections */
+  section { margin-bottom: 48px; }
+  section h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--primary);
+    display: inline-block;
+  }
+  section h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 20px 0 10px;
+    color: var(--primary-dark);
+  }
+  section h4 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin: 14px 0 6px;
+  }
+  section p { margin-bottom: 10px; color: var(--text); }
+  section ul, section ol { margin: 8px 0 14px 20px; }
+  section li { margin-bottom: 4px; }
+  section img.placeholder { display: block; max-width: 100%; border: 1px solid var(--border); border-radius: var(--radius); margin: 12px 0; }
+
+  /* Cards / info blocks */
+  .info-box {
+    background: #eff6ff;
+    border-left: 4px solid var(--primary);
+    padding: 14px 18px;
+    border-radius: 0 var(--radius) var(--radius) 0;
+    margin: 14px 0;
+    font-size: 0.9rem;
+  }
+  .info-box.warning { background: #fffbeb; border-left-color: var(--warning); }
+  .info-box.danger { background: #fef2f2; border-left-color: var(--danger); }
+  .info-box.success { background: #f0fdf4; border-left-color: var(--success); }
+  .info-box strong { display: block; margin-bottom: 4px; }
+
+  /* Tables */
+  table.feature-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 0.9rem;
+  }
+  table.feature-table th {
+    text-align: left;
+    background: #f1f5f9;
+    padding: 8px 12px;
+    font-weight: 600;
+    border: 1px solid var(--border);
+  }
+  table.feature-table td {
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    vertical-align: top;
+  }
+  table.feature-table tr:nth-child(even) td { background: #fafbfc; }
+
+  /* Badge demo */
+  .badge-demo {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 9999px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    margin-right: 6px;
+  }
+  .badge-demo.green { background: #dcfce7; color: #166534; }
+  .badge-demo.red { background: #fee2e2; color: #991b1b; }
+  .badge-demo.orange { background: #ffedd5; color: #9a3412; }
+  .badge-demo.blue { background: #dbeafe; color: #1e40af; }
+  .badge-demo.purple { background: #f3e8ff; color: #6b21a8; }
+  .badge-demo.gray { background: #f1f5f9; color: #475569; }
+  .badge-demo.yellow { background: #fef9c3; color: #854d0e; }
+
+  /* Shortcut kbd */
+  kbd {
+    display: inline-block;
+    padding: 2px 6px;
+    font-size: 0.78rem;
+    font-family: inherit;
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    box-shadow: 0 1px 0 #94a3b8;
+  }
+
+  /* Status icon row */
+  .status-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    nav.sidebar { width: 100%; height: auto; position: relative; }
+    main { margin-left: 0; padding: 24px 16px; }
+  }
+
+  /* TOC in hero */
+  .toc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 8px;
+    margin: 16px 0;
+  }
+  .toc-grid a {
+    display: block;
+    padding: 8px 14px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    text-decoration: none;
+    font-size: 0.875rem;
+    transition: border-color 0.15s;
+  }
+  .toc-grid a:hover { border-color: var(--primary); }
+
+  /* Print */
+  @media print {
+    nav.sidebar { display: none; }
+    main { margin-left: 0; padding: 20px; }
+    .hero { page-break-after: avoid; }
+    section { page-break-inside: avoid; }
+  }
+
+  /* Back to top */
+  .back-to-top {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: #fff;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+  }
+  .back-to-top.visible { display: flex; }
+</style>
+</head>
+<body>
+
+<!-- ===== SIDEBAR ===== -->
+<nav class="sidebar" id="sidebar">
+  <div class="logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2v-5"/></svg>
+    ProfManager
+  </div>
+  <div class="nav-section">
+    <div class="nav-section-title">Prise en main</div>
+    <a href="#introduction">Introduction</a>
+    <a href="#dashboard">Tableau de bord</a>
+  </div>
+  <div class="nav-section">
+    <div class="nav-section-title">Modules</div>
+    <a href="#students">Élèves</a>
+    <a href="#groups">Groupes</a>
+    <a href="#attendance">Présences</a>
+    <a href="#payments">Paiements</a>
+    <a href="#calendar">Calendrier</a>
+    <a href="#reports">Rapports</a>
+    <a href="#settings">Paramètres</a>
+  </div>
+  <div class="nav-section">
+    <div class="nav-section-title">Annexes</div>
+    <a href="#statuses">Statuts &amp; badges</a>
+    <a href="#shortcuts">Raccourcis</a>
+    <a href="#troubleshooting">Dépannage</a>
+  </div>
+</nav>
+
+<!-- ===== MAIN ===== -->
+<main>
+
+<!-- HERO -->
+<div class="hero" id="introduction">
+  <h1>📘 Manuel d'utilisation — ProfManager</h1>
+  <p>Version 1.0 — Guide complet pour gérer votre cabinet de cours particuliers : élèves, groupes, présences, paiements et rapports.</p>
+
+  <div class="toc-grid">
+    <a href="#dashboard">📊 Tableau de bord</a>
+    <a href="#students">👤 Élèves</a>
+    <a href="#groups">👥 Groupes</a>
+    <a href="#attendance">✅ Présences</a>
+    <a href="#payments">💰 Paiements</a>
+    <a href="#calendar">📅 Calendrier</a>
+    <a href="#reports">📈 Rapports</a>
+    <a href="#settings">⚙️ Paramètres</a>
+  </div>
+
+  <div class="info-box">
+    <strong>🔑 Première connexion</strong>
+    Créez un compte sur la page d'inscription. Après validation, vous serez redirigé vers le tableau de bord. Commencez par configurer votre année scolaire dans <strong>Paramètres → Année scolaire</strong>.
+  </div>
+</div>
+
+<!-- ===== DASHBOARD ===== -->
+<section id="dashboard">
+  <h2>📊 Tableau de bord</h2>
+  <p>Vue d'ensemble de votre activité du jour et des indicateurs clés.</p>
+
+  <h3>Résumé quotidien (4 cartes en haut)</h3>
+  <table class="feature-table">
+    <tr><th>Carte</th><th>Description</th></tr>
+    <tr><td>🔴 Impayés</td><td>Nombre d'élèves avec un paiement en retard ce mois-ci.</td></tr>
+    <tr><td>🟡 Expiration</td><td>Abonnements arrivant à échéance (non implémenté, toujours 0).</td></tr>
+    <tr><td>🔵 En attente</td><td>Paiements en attente de validation.</td></tr>
+    <tr><td>🟠 Absents aujourd'hui</td><td>Nombre d'élèves marqués <span class="badge-demo red">Absent</span> pour les séances d'aujourd'hui <strong>uniquement</strong> (les absences futures ne sont pas comptées).</td></tr>
+  </table>
+
+  <h3>Indicateurs clés (KPIs) — 6 cartes</h3>
+  <table class="feature-table">
+    <tr><th>KPI</th><th>Détail</th></tr>
+    <tr><td>👤 Élèves actifs</td><td>Nombre total d'élèves avec le statut <span class="badge-demo green">Actif</span>.</td></tr>
+    <tr><td>✅ À jour</td><td>Élèves ayant payé le mois en cours.</td></tr>
+    <tr><td>🔴 Impayés</td><td>Élèves en situation d'impayé.</td></tr>
+    <tr><td>💰 Revenu du mois</td><td>Somme des montants encaissés ce mois-ci.</td></tr>
+    <tr><td>💳 Dette totale</td><td>Somme due par l'ensemble des élèves.</td></tr>
+    <tr><td>⏳ Expiration</td><td>Abonnements proches de la fin (non implémenté).</td></tr>
+  </table>
+
+  <h3>Séances du jour</h3>
+  <p>Affiche les séances programmées aujourd'hui avec le nom du groupe et l'horaire. Cliquez sur une séance pour ouvrir la page de présence.</p>
+
+  <h3>Paiements du jour</h3>
+  <p>Liste les paiements enregistrés aujourd'hui avec le nom de l'élève et le montant.</p>
+
+  <h3>Statistiques des séances</h3>
+  <table class="feature-table">
+    <tr><th>Statistique</th><th>Description</th></tr>
+    <tr><td>Total</td><td>Nombre total de séances générées sur l'année scolaire.</td></tr>
+    <tr><td style="color:var(--success)">Terminées</td><td>Séances marquées <span class="badge-demo green">Terminée</span>.</td></tr>
+    <tr><td style="color:var(--danger)">Annulées</td><td>Séances annulées.</td></tr>
+    <tr><td style="color:#9333ea">Extra</td><td>Séances supplémentaires (non implémenté, toujours 0).</td></tr>
+    <tr><td style="color:#ea580c">Rattrapage</td><td>Séances de rattrapage (non implémenté, toujours 0).</td></tr>
+    <tr><td style="color:var(--primary)">Restantes</td><td>Séances à venir dans l'année scolaire.</td></tr>
+  </table>
+
+  <h3>Élèves en retard</h3>
+  <p>Affiche jusqu'à 9 élèves avec des impayés, triés par montant dû décroissant. Cliquez sur un élève pour voir sa fiche.</p>
+
+  <div class="info-box">
+    <strong>💡 Astuce</strong>
+    Les données du tableau de bord sont mises à jour automatiquement à chaque action. Utilisez les cartes "Impavés" et "En attente" pour prioriser votre travail quotidien.
+  </div>
+</section>
+
+<!-- ===== STUDENTS ===== -->
+<section id="students">
+  <h2>👤 Gestion des élèves</h2>
+  <p>Créez, modifiez, archivez et consultez la fiche complète de chaque élève.</p>
+
+  <h3>Liste des élèves</h3>
+  <p>Accessible depuis le menu latéral <strong>Élèves</strong>. La liste affiche : nom, téléphone, niveau scolaire, groupes d'inscription et statut.</p>
+
+  <h4>Fonctionnalités de la liste</h4>
+  <ul>
+    <li><strong>🔍 Recherche</strong> — Filtre par nom, téléphone ou email.</li>
+    <li><strong>📥 Exporter (XLSX)</strong> — Télécharge la liste complète au format Excel.</li>
+    <li><strong>🔄 Statut</strong> — Basculez entre <span class="badge-demo green">Actif</span> et <span class="badge-demo gray">Inactif</span> depuis la liste.</li>
+  </ul>
+
+  <h4>Créer un élève</h4>
+  <ol>
+    <li>Cliquez sur <strong>➕ Ajouter</strong>.</li>
+    <li>Remplissez les champs : prénom, nom, téléphone, email, niveau, établissement.</li>
+    <li>Cliquez sur <strong>Créer</strong>. L'élève est automatiquement marqué <span class="badge-demo green">Actif</span>.</li>
+  </ol>
+
+  <h4>Fiche élève</h4>
+  <p>En cliquant sur un élève, vous accédez à sa fiche détaillée :</p>
+
+  <table class="feature-table">
+    <tr><th>Section</th><th>Contenu</th></tr>
+    <tr><td>Informations</td><td>Photo, nom, contact, niveau, date d'inscription.</td></tr>
+    <tr><td>Groupes</td><td>Liste des groupes auxquels l'élève est inscrit (statut <span class="badge-demo green">Actif</span>).</td></tr>
+    <tr><td>Paiements</td><td>Historique des paiements avec montant dû, montant payé, statut et date.</td></tr>
+    <tr><td>Présences</td><td>Dernières 20 présences avec date, statut (<span class="badge-demo green">Présent</span>, <span class="badge-demo red">Absent</span>, <span class="badge-demo orange">En retard</span>, <span class="badge-demo blue">Excusé</span>).</td></tr>
+    <tr><td>Responsables</td><td>Noms et contacts des parents/tuteurs.</td></tr>
+  </table>
+
+  <h4>Statuts d'un élève</h4>
+  <table class="feature-table">
+    <tr><th>Statut</th><th>Signification</th></tr>
+    <tr><td><span class="badge-demo green">Actif</span></td><td>Élève actuellement inscrit, les présences et paiements sont suivis.</td></tr>
+    <tr><td><span class="badge-demo gray">Inactif</span></td><td>Élève désinscrit. Ses données sont conservées mais il n'apparaît plus dans les statistiques actives.</td></tr>
+  </table>
+
+  <div class="info-box warning">
+    <strong>⚠️ Suppression</strong>
+    La suppression d'un élève est définitive et efface toutes ses données (présences, paiements, inscriptions aux groupes). Utilisez le statut <span class="badge-demo gray">Inactif</span> pour conserver l'historique.
+  </div>
+</section>
+
+<!-- ===== GROUPS ===== -->
+<section id="groups">
+  <h2>👥 Gestion des groupes</h2>
+  <p>Créez des groupes de cours, définissez leur emploi du temps hebdomadaire et inscrivez des élèves.</p>
+
+  <h3>Créer un groupe</h3>
+  <ol>
+    <li>Cliquez sur <strong>➕ Nouveau groupe</strong>.</li>
+    <li>Remplissez : <strong>Nom</strong> (obligatoire), <strong>matière</strong> (optionnelle), <strong>niveau</strong>, <strong>capacité maximale</strong> (défaut : 10).</li>
+    <li>Définissez le <strong>tarif</strong> et le <strong>type de tarif</strong> :
+      <ul>
+        <li><strong>Par séance</strong> — Montant facturé à chaque séance.</li>
+        <li><strong>Mensuel</strong> — Abonnement mensuel fixe.</li>
+        <li><strong>Forfait</strong> — Pack de séances.</li>
+      </ul>
+    </li>
+    <li>Ajoutez les <strong>créneaux hebdomadaires</strong> (jour + horaires). Vous pouvez en ajouter plusieurs (ex: lundi 18h-20h + mercredi 18h-20h).</li>
+    <li>Cliquez sur <strong>Créer</strong>. Le système génère automatiquement toutes les séances du groupe depuis le début de l'année scolaire jusqu'à la fin.</li>
+  </ol>
+
+  <div class="info-box success">
+    <strong>🤖 Génération automatique des séances</strong>
+    Dès qu'un groupe est créé ou qu'un créneau est ajouté, le système génère <strong>toutes les séances</strong> pour l'année scolaire. Par exemple, avec un créneau le lundi, 52 séances sont créées (une par lundi). Rendez-vous dans <strong>Présences</strong> pour les voir.
+  </div>
+
+  <h3>Détail d'un groupe</h3>
+  <p>En cliquant sur un groupe, vous accédez à :</p>
+  <ul>
+    <li><strong>👤 Élèves inscrits</strong> — Liste avec statut de présence pour chaque séance.</li>
+    <li><strong>📅 Emploi du temps</strong> — Créneaux hebdomadaires (jour, début, fin).</li>
+    <li><strong>📊 Taux de présence</strong> — Pourcentage calculé uniquement sur les élèves actuellement inscrits.</li>
+    <li><strong>🔗 Séances à venir</strong> — Les 10 prochaines séances du groupe avec lien vers la page d'appel.</li>
+  </ul>
+
+  <h4>Inscrire / Désinscrire un élève</h4>
+  <p>Depuis la fiche groupe, utilisez le champ de recherche pour ajouter un élève. Cliquez sur la croix pour le retirer du groupe. Le statut d'inscription passe à <span class="badge-demo gray">Inactif</span> dans le groupe (l'historique de présence est conservé).</p>
+
+  <h4>Gérer les créneaux</h4>
+  <ul>
+    <li><strong>➕ Ajouter un créneau</strong> — Un nouveau jour/horaire. Les séances sont regénérées automatiquement.</li>
+    <li><strong>🗑️ Supprimer un créneau</strong> — Les séances futures de ce créneau sont supprimées. Les séances passées sont conservées.</li>
+  </ul>
+
+  <h4>Tarifs</h4>
+  <table class="feature-table">
+    <tr><th>Type</th><th>Comportement</th></tr>
+    <tr><td>Par séance</td><td>Chaque séance génère un paiement de ce montant.</td></tr>
+    <tr><td>Mensuel</td><td>Un paiement mensuel fixe, indépendant du nombre de séances.</td></tr>
+    <tr><td>Forfait</td><td>Pack de séances (mode non implémenté).</td></tr>
+  </table>
+</section>
+
+<!-- ===== ATTENDANCE ===== -->
+<section id="attendance">
+  <h2>✅ Gestion des présences</h2>
+  <p>Marquez les présences de chaque élève pour chaque séance générée automatiquement.</p>
+
+  <h3>Liste des séances à venir</h3>
+  <p>La page <strong>Présences</strong> affiche les 50 prochaines séances programmées, triées par date et heure, regroupées par jour.</p>
+  <ul>
+    <li>Chaque séance affiche le <strong>nom du groupe</strong> et les <strong>horaires</strong>.</li>
+    <li>Cliquez sur une séance pour ouvrir la <strong>page d'appel</strong>.</li>
+    <li>Si aucune séance n'est programmée, un message "Aucune séance à venir" s'affiche.</li>
+  </ul>
+
+  <h3>Page d'appel (marquage des présences)</h3>
+  <p>Pour chaque séance, vous pouvez marquer la présence de chaque élève inscrit au groupe :</p>
+
+  <table class="feature-table">
+    <tr><th>Action</th><th>Description</th></tr>
+    <tr><td><span class="badge-demo green">Présent</span></td><td>L'élève était présent à la séance.</td></tr>
+    <tr><td><span class="badge-demo red">Absent</span></td><td>L'élève était absent (non excusé).</td></tr>
+    <tr><td><span class="badge-demo orange">En retard</span></td><td>L'élève était présent mais en retard.</td></tr>
+    <tr><td><span class="badge-demo blue">Excusé</span></td><td>L'élève était absent avec un motif valable.</td></tr>
+    <tr><td><strong>✅ Marquer tout présent</strong></td><td>Passe tous les élèves en <span class="badge-demo green">Présent</span> en un clic.</td></tr>
+    <tr><td><strong>❌ Annuler la séance</strong></td><td>Marque la séance comme annulée (visible dans les statistiques).</td></tr>
+  </table>
+
+  <h3>Marquer des absences futures</h3>
+  <p>Vous pouvez anticiper une absence : ouvrez une séance future et marquez l'élève comme <span class="badge-demo red">Absent</span>. Cette absence ne sera pas comptée dans les statistiques "Absents aujourd'hui" du tableau de bord.</p>
+
+  <div class="info-box">
+    <strong>💡 Astuce</strong>
+    Utilisez <strong>✅ Marquer tout présent</strong> en début de séance, puis corrigez individuellement les absents et retardataires. Cela vous fait gagner du temps.
+  </div>
+
+  <h3>Statuts d'une séance</h3>
+  <table class="feature-table">
+    <tr><th>Statut</th><th>Icône / Badge</th><th>Signification</th></tr>
+    <tr><td>Programmée</td><td><span class="badge-demo blue">Programmée</span></td><td>Séance à venir, appel non effectué.</td></tr>
+    <tr><td>Terminée</td><td><span class="badge-demo green">Terminée</span></td><td>Séance passée avec appel effectué.</td></tr>
+    <tr><td>Annulée</td><td><span class="badge-demo red">Annulée</span></td><td>Séance annulée (ne génère pas de paiement).</td></tr>
+  </table>
+</section>
+
+<!-- ===== PAYMENTS ===== -->
+<section id="payments">
+  <h2>💰 Gestion des paiements</h2>
+  <p>Créez, suivez et gérez les paiements de vos élèves par mois.</p>
+
+  <h3>Liste des paiements</h3>
+  <p>Accessible depuis <strong>Paiements</strong>. La liste affiche : élève, groupe(s), mois, montant dû, montant payé, statut.</p>
+
+  <h4>Fonctionnalités</h4>
+  <ul>
+    <li><strong>📅 Filtre par mois</strong> — Sélectionnez un mois pour voir les paiements correspondants.</li>
+    <li><strong>🔍 Recherche</strong> — Filtre par nom d'élève.</li>
+    <li><strong>🔄 Générer les paiements du mois</strong> — Crée automatiquement les paiements pour tous les élèves actifs.</li>
+    <li><strong>📥 Exporter (CSV)</strong> — Téléchargez la liste.</li>
+    <li><strong>✅ Paiement rapide</strong> — Cliquez sur le montant payé pour enregistrer un encaissement.</li>
+  </ul>
+
+  <h3>Statuts d'un paiement</h3>
+  <table class="feature-table">
+    <tr><th>Statut</th><th>Badge</th><th>Signification</th></tr>
+    <tr><td>À jour</td><td><span class="badge-demo green">À jour</span></td><td>Paiement du mois effectué.</td></tr>
+    <tr><td>En retard</td><td><span class="badge-demo red">En retard</span></td><td>Paiement non reçu après la date d'échéance.</td></tr>
+    <tr><td>En attente</td><td><span class="badge-demo yellow">En attente</span></td><td>Paiement en cours de validation.</td></tr>
+  </table>
+
+  <h3>Créer un paiement manuel</h3>
+  <ol>
+    <li>Cliquez sur <strong>➕ Nouveau paiement</strong>.</li>
+    <li>Sélectionnez l'élève, le mois, le montant dû et le montant payé.</li>
+    <li>Choisissez le statut initial.</li>
+    <li>Cliquez sur <strong>Créer</strong>.</li>
+  </ol>
+
+  <h3>Génération automatique</h3>
+  <p>Cliquez sur <strong>🔄 Générer les paiements du mois</strong> pour créer automatiquement une ligne de paiement pour chaque élève actif, avec le montant basé sur le tarif de son groupe.</p>
+
+  <div class="info-box warning">
+    <strong>⚠️ Important</strong>
+    La génération automatique crée les paiements au début de chaque mois. Les paiements déjà existants ne sont pas dupliqués.
+  </div>
+</section>
+
+<!-- ===== CALENDAR ===== -->
+<section id="calendar">
+  <h2>📅 Calendrier</h2>
+  <p>Visualisez l'ensemble des séances sur un calendrier mensuel.</p>
+
+  <h3>Navigation</h3>
+  <ul>
+    <li><strong>◀ Mois précédent</strong> / <strong>Mois suivant ▶</strong> — Changez de mois.</li>
+    <li><strong>Aujourd'hui</strong> — Revenir au mois en cours.</li>
+  </ul>
+
+  <h3>Affichage</h3>
+  <p>Chaque case du calendrier représente un jour. Les séances programmées apparaissent avec le nom du groupe. Les jours sans séance sont vides.</p>
+  <ul>
+    <li>Cliquez sur une séance dans le calendrier pour ouvrir la page d'appel.</li>
+    <li>Le nom du groupe est affiché pour chaque séance.</li>
+  </ul>
+
+  <div class="info-box">
+    <strong>💡 Astuce</strong>
+    Utilisez le calendrier pour avoir une vue d'ensemble de votre mois et repérer rapidement les jours avec séances.
+  </div>
+</section>
+
+<!-- ===== REPORTS ===== -->
+<section id="reports">
+  <h2>📈 Rapports</h2>
+  <p>Consultez des statistiques détaillées sur votre activité.</p>
+
+  <h3>Graphiques disponibles</h3>
+
+  <table class="feature-table">
+    <tr><th>Graphique</th><th>Description</th></tr>
+    <tr><td><strong>Revenus par mois</strong></td><td>Histogramme des encaissements mensuels sur les 6 derniers mois. Chaque barre représente un mois. Les montants sont affichés au survol.</td></tr>
+    <tr><td><strong>Croissance des élèves</strong></td><td>Courbe du nombre d'élèves inscrits par mois. Permet de visualiser l'évolution de votre effectif.</td></tr>
+    <tr><td><strong>Taux de présence</strong></td><td>Pourcentage global de présence sur les 100 dernières entrées. Mis à jour à chaque marquage.</td></tr>
+    <tr><td><strong>Taux d'absence</strong></td><td>Pourcentage global d'absence sur les 100 dernières entrées.</td></tr>
+  </table>
+
+  <div class="info-box">
+    <strong>💡 Astuce</strong>
+    Les graphiques sont interactifs : survolez les barres et les points pour voir les valeurs exactes.
+  </div>
+</section>
+
+<!-- ===== SETTINGS ===== -->
+<section id="settings">
+  <h2>⚙️ Paramètres</h2>
+  <p>Configurez votre compte, votre établissement et les données de base.</p>
+
+  <h3>Général</h3>
+  <ul>
+    <li><strong>Nom de l'établissement</strong> — Apparaît sur les reçus et l'interface.</li>
+    <li><strong>Fuseau horaire</strong> — Définit le décalage horaire pour les séances et paiements.</li>
+  </ul>
+
+  <h3>Année scolaire</h3>
+  <p>Définissez les dates de début et fin de l'année scolaire :</p>
+  <ol>
+    <li>Saisissez la <strong>date de début</strong> (ex: 01/09/2026).</li>
+    <li>Saisissez la <strong>date de fin</strong> (ex: 30/06/2027).</li>
+    <li>Cliquez sur <strong>Enregistrer</strong>. Toutes les séances sont automatiquement régénérées pour correspondre à la nouvelle plage.</li>
+  </ol>
+
+  <div class="info-box danger">
+    <strong>⚠️ Changement des dates</strong>
+    Modifier les dates de l'année scolaire <strong>régénère toutes les séances futures</strong>. Les séances passées (avec présence marquée) ne sont pas affectées. Utilisez le bouton <strong>🔄 Régénérer les séances</strong> pour forcer une régénération manuelle.
+  </div>
+
+  <h3>Langue</h3>
+  <p>Changez la langue de l'interface. Les langues disponibles :</p>
+  <ul>
+    <li><strong>Français</strong> (par défaut)</li>
+    <li><strong>Anglais</strong></li>
+    <li><strong>Arabe</strong> (avec support RTL)</li>
+  </ul>
+
+  <h3>Matières</h3>
+  <p>Créez et gérez les matières enseignées :</p>
+  <ul>
+    <li><strong>➕ Ajouter une matière</strong> — Saisissez un nom et choisissez une couleur.</li>
+    <li><strong>Modifier</strong> — Changez le nom ou la couleur.</li>
+    <li><strong>🗑️ Supprimer</strong> — Supprime la matière (les groupes associés ne sont pas supprimés).</li>
+  </ul>
+
+  <h3>Équipe</h3>
+  <p>Gérez les accès des collaborateurs. Chaque membre peut avoir un rôle avec des permissions spécifiques.</p>
+
+  <h3>Sauvegarde &amp; Restauration</h3>
+  <ul>
+    <li><strong>📥 Exporter (JSON)</strong> — Télécharge toutes vos données (élèves, groupes, séances, présences, paiements).</li>
+    <li><strong>📤 Restaurer</strong> — Importez un fichier JSON pour restaurer vos données. Attention : cela remplace toutes les données existantes.</li>
+  </ul>
+
+  <h3>Réinitialisation</h3>
+  <p>Efface toutes les données de votre compte. Action irréversible.</p>
+
+  <div class="info-box danger">
+    <strong>☠️ Zone de danger</strong>
+    La réinitialisation supprime définitivement toutes les données. Effectuez une sauvegarde avant de réinitialiser.
+  </div>
+
+  <h3>Génération des séances (bouton manuel)</h3>
+  <p>Si des séances sont manquantes (après un changement de dates ou une anomalie), cliquez sur <strong>🔄 Régénérer les séances</strong> dans la carte "Année scolaire" pour recréer toutes les séances futures.</p>
+</section>
+
+<!-- ===== STATUSES ===== -->
+<section id="statuses">
+  <h2>🏷️ Référence des statuts &amp; badges</h2>
+
+  <h3>Élèves</h3>
+  <div class="status-row">
+    <span class="badge-demo green">Actif</span>
+    <span class="badge-demo gray">Inactif</span>
+  </div>
+
+  <h3>Présences</h3>
+  <div class="status-row">
+    <span class="badge-demo green">Présent</span>
+    <span class="badge-demo red">Absent</span>
+    <span class="badge-demo orange">En retard</span>
+    <span class="badge-demo blue">Excusé</span>
+  </div>
+
+  <h3>Séances</h3>
+  <div class="status-row">
+    <span class="badge-demo blue">Programmée</span>
+    <span class="badge-demo green">Terminée</span>
+    <span class="badge-demo red">Annulée</span>
+  </div>
+
+  <h3>Paiements</h3>
+  <div class="status-row">
+    <span class="badge-demo green">À jour</span>
+    <span class="badge-demo red">En retard</span>
+    <span class="badge-demo yellow">En attente</span>
+  </div>
+
+  <h3>Inscription aux groupes</h3>
+  <div class="status-row">
+    <span class="badge-demo green">Actif</span>
+    <span class="badge-demo gray">Inactif</span>
+  </div>
+</section>
+
+<!-- ===== SHORTCUTS ===== -->
+<section id="shortcuts">
+  <h2>⌨️ Raccourcis et astuces</h2>
+
+  <table class="feature-table">
+    <tr><th>Action</th><th>Emplacement</th><th>Astuce</th></tr>
+    <tr><td>Marquer tout présent</td><td>Page d'appel</td><td>Gagne du temps en début de séance.</td></tr>
+    <tr><td>Exporter les élèves</td><td>Liste des élèves</td><td>Télécharge un fichier XLSX pour vos archives.</td></tr>
+    <tr><td>Générer les paiements</td><td>Liste des paiements</td><td>À faire au début de chaque mois.</td></tr>
+    <tr><td>Rechercher un élève</td><td>Liste des élèves</td><td>La recherche filtre en temps réel.</td></tr>
+    <tr><td>Sauvegarder les données</td><td>Paramètres</td><td>Faites une sauvegarde régulièrement.</td></tr>
+  </table>
+
+  <div class="info-box">
+    <strong>💡 Navigation</strong>
+    Utilisez le menu latéral pour naviguer rapidement entre les modules. Chaque page se charge dynamiquement sans rechargement complet.
+  </div>
+</section>
+
+<!-- ===== TROUBLESHOOTING ===== -->
+<section id="troubleshooting">
+  <h2>🔧 Dépannage</h2>
+
+  <h3>Les séances n'apparaissent pas dans Présences</h3>
+  <ol>
+    <li>Vérifiez que les dates de l'année scolaire sont définies dans <strong>Paramètres → Année scolaire</strong>.</li>
+    <li>Vérifiez que le groupe a au moins un créneau horaire (jour + horaires).</li>
+    <li>Cliquez sur <strong>🔄 Régénérer les séances</strong> dans Paramètres.</li>
+    <li>Si le problème persiste, déconnectez-vous et reconnectez-vous.</li>
+  </ol>
+
+  <h3>Le taux de présence affiche un pourcentage alors qu'il n'y a pas d'élèves</h3>
+  <p>Cela peut arriver si des enregistrements de présence d'anciens élèves subsistent. Le système a été corrigé pour ignorer les élèves non inscrits. Videz le cache ou rafraîchissez la page.</p>
+
+  <h3>Le tableau de bord affiche "Absent aujourd'hui" avec un mauvais compte</h3>
+  <p>Vérifiez que vous ne marquez pas des absences pour des séances futures. Les absences futures ne sont pas comptées dans les statistiques du jour.</p>
+
+  <h3>Un élève ne peut pas être ajouté à un groupe</h3>
+  <ul>
+    <li>Vérifiez que l'élève a le statut <span class="badge-demo green">Actif</span>.</li>
+    <li>Vérifiez que le groupe n'a pas atteint sa capacité maximale.</li>
+  </ul>
+
+  <h3>Le paiement généré ne correspond pas au tarif attendu</h3>
+  <p>La génération automatique utilise le tarif défini dans le groupe. Vérifiez le type de tarif (par séance, mensuel, forfait) et le montant dans la fiche du groupe.</p>
+
+  <h3>L'application ne se charge pas (page blanche)</h3>
+  <ol>
+    <li>Videz le cache du navigateur.</li>
+    <li>Utilisez une fenêtre de navigation privée.</li>
+    <li>Si l'erreur persiste, le serveur est peut-être en maintenance. Réessayez plus tard.</li>
+  </ol>
+
+  <div class="info-box">
+    <strong>📞 Support</strong>
+    Si vous rencontrez un problème non listé ici, contactez le support via le site <a href="https://profmanager.app" target="_blank">profmanager.app</a>.
+  </div>
+</section>
+
+<!-- FOOTER -->
+<div style="margin-top: 60px; padding-top: 24px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.85rem; text-align: center;">
+  ProfManager — Manuel utilisateur version 1.0 — Généré le <script>document.write(new Date().toLocaleDateString("fr-FR", { year: 'numeric', month: 'long', day: 'numeric' }))</script>
+</div>
+
+</main>
+
+<!-- Back to top -->
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Retour en haut">↑</button>
+
+<script>
+// Highlight active section in sidebar
+const sections = document.querySelectorAll("section[id]");
+const links = document.querySelectorAll("nav.sidebar a");
+const backBtn = document.getElementById("backToTop");
+
+function onScroll() {
+  let current = "";
+  sections.forEach(s => {
+    const top = s.offsetTop - 100;
+    if (window.scrollY >= top) current = s.id;
+  });
+  links.forEach(a => {
+    a.classList.toggle("active", a.getAttribute("href") === "#" + current);
+  });
+  backBtn.classList.toggle("visible", window.scrollY > 300);
+}
+
+window.addEventListener("scroll", onScroll, { passive: true });
+window.addEventListener("load", onScroll);
+</script>
+
+</body>
+</html>

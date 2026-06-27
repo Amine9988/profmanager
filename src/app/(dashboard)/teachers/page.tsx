@@ -1,0 +1,469 @@
+"use client";
+
+import { useState, useEffect, useRef, useMemo } from "react";
+import { useT } from "@/lib/i18n";
+import { formatCurrency } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
+} from "@/components/ui/dialog";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Plus, Trash2, DollarSign, Pencil, X } from "lucide-react";
+import { toast } from "sonner";
+
+interface SubjectInfo {
+  id: string;
+  name: string;
+  color: string;
+}
+
+interface Teacher {
+  id: string;
+  firstName: string;
+  lastName: string;
+  phone: string | null;
+  email: string | null;
+  salaryType: string;
+  salaryAmount: number;
+  subjects: SubjectInfo[];
+}
+
+const SALARY_TYPES = [
+  "monthly", "fixed", "per_student", "per_hour", "per_session", "percentage",
+] as const;
+
+function getSalaryAmountLabel(type: string): string {
+  switch (type) {
+    case "monthly":     return "Salaire mensuel (د.ج)";
+    case "fixed":       return "Montant fixe (د.ج)";
+    case "per_student": return "Montant par élève (د.ج)";
+    case "per_hour":    return "Tarif horaire (د.ج)";
+    case "per_session": return "Montant par séance (د.ج)";
+    case "percentage":  return "Pourcentage (%)";
+    default:            return "Montant (د.ج)";
+  }
+}
+
+function SubjectAutocomplete({
+  allSubjects,
+  selectedIds,
+  onChange,
+}: {
+  allSubjects: SubjectInfo[];
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const t = useT();
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const filtered = useMemo(() => {
+    if (!query) return allSubjects.filter((s) => !selectedIds.includes(s.id));
+    const q = query.toLowerCase();
+    return allSubjects.filter(
+      (s) => !selectedIds.includes(s.id) && s.name.toLowerCase().includes(q)
+    );
+  }, [allSubjects, selectedIds, query]);
+
+  function addSubject(id: string) {
+    onChange([...selectedIds, id]);
+    setQuery("");
+  }
+
+  function removeSubject(id: string) {
+    onChange(selectedIds.filter((sid) => sid !== id));
+  }
+
+  const selectedSubjects = allSubjects.filter((s) => selectedIds.includes(s.id));
+
+  return (
+    <div className="space-y-2" ref={ref}>
+      <Label>{t("common.subject")}</Label>
+      <div className="relative">
+        <div className="flex min-h-9 w-full flex-wrap gap-1 rounded-md border border-input bg-background px-3 py-1 text-sm">
+          {selectedSubjects.map((s) => (
+            <span
+              key={s.id}
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+              style={{ backgroundColor: `${s.color}22`, color: s.color }}
+            >
+              {s.name}
+              <button type="button" onClick={() => removeSubject(s.id)} className="hover:opacity-70">
+                <X className="size-3" />
+              </button>
+            </span>
+          ))}
+          <input
+            type="text"
+            className="min-w-[120px] flex-1 border-0 bg-transparent p-0 text-sm outline-none placeholder:text-muted-foreground"
+            placeholder={selectedSubjects.length === 0 ? t("common.search") : ""}
+            value={query}
+            onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+            onFocus={() => setOpen(true)}
+          />
+        </div>
+        {open && (
+          <div className="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-md border bg-popover shadow-md">
+            {allSubjects.length === 0 ? (
+              <p className="p-3 text-xs text-muted-foreground">{t("teachers.no_subjects")}</p>
+            ) : filtered.length === 0 ? (
+              <p className="p-3 text-xs text-muted-foreground">{t("common.noResults")}</p>
+            ) : (
+              filtered.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
+                  onClick={() => addSubject(s.id)}
+                >
+                  <span className="inline-block size-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+                  {s.name}
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function TeachersPage() {
+  const t = useT();
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  async function fetchTeachers() {
+    const res = await fetch("/api/teachers");
+    if (res.ok) setTeachers(await res.json());
+  }
+
+  useEffect(() => {
+    setLoading(true);
+    fetchTeachers().finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <div className="space-y-6 p-4 md:p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-2xl font-bold">{t("teachers.title")}</h1>
+        <TeacherFormDialog onSaved={fetchTeachers} />
+      </div>
+
+      {loading ? (
+        <p className="text-center text-muted-foreground">{t("common.loading")}</p>
+      ) : teachers.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center text-muted-foreground">{t("teachers.no_teachers")}</CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {teachers.map((teacher) => (
+            <TeacherCard key={teacher.id} teacher={teacher} onUpdated={fetchTeachers} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TeacherCard({ teacher, onUpdated }: { teacher: Teacher; onUpdated: () => void }) {
+  const t = useT();
+  const [showPayDialog, setShowPayDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+
+  async function handleDelete() {
+    if (!window.confirm(t("common.confirmDelete"))) return;
+    try {
+      const res = await fetch(`/api/teachers?id=${teacher.id}`, { method: "DELETE" });
+      if (res.ok) {
+        toast.success(t("common.success"));
+        onUpdated();
+      } else {
+        toast.error(t("common.error"));
+      }
+    } catch { toast.error(t("common.error")); }
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader className="flex flex-row items-start justify-between pb-2">
+          <div>
+            <CardTitle className="text-base">{teacher.firstName} {teacher.lastName}</CardTitle>
+            <p className="text-xs text-muted-foreground">{teacher.phone || teacher.email || "—"}</p>
+          </div>
+          <div className="flex gap-1">
+            <Button variant="outline" size="icon" className="size-8" onClick={() => setShowEditDialog(true)} title={t("teachers.edit")}>
+              <Pencil className="size-4" />
+            </Button>
+            <Button variant="outline" size="icon" className="size-8" onClick={() => setShowPayDialog(true)} title={t("teachers.pay")}>
+              <DollarSign className="size-4" />
+            </Button>
+            <Button variant="outline" size="icon" className="size-8" onClick={handleDelete}>
+              <Trash2 className="size-4" />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">{salaryTypeLabel(teacher.salaryType)}</span>
+            <span className="font-medium">{formatCurrency(teacher.salaryAmount)}</span>
+          </div>
+          {teacher.subjects && teacher.subjects.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {teacher.subjects.map((s) => (
+                <span
+                  key={s.id}
+                  className="inline-block rounded-full px-2 py-0.5 text-xs font-medium"
+                  style={{ backgroundColor: `${s.color}22`, color: s.color }}
+                >
+                  {s.name}
+                </span>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+      {showEditDialog && (
+        <TeacherFormDialog
+          teacher={teacher}
+          onClose={() => setShowEditDialog(false)}
+          onSaved={() => { setShowEditDialog(false); onUpdated(); }}
+        />
+      )}
+      {showPayDialog && (
+        <PayTeacherDialog teacher={teacher} onClose={() => setShowPayDialog(false)} onPaid={onUpdated} />
+      )}
+    </>
+  );
+}
+
+function salaryTypeLabel(type: string): string {
+  const labels: Record<string, string> = {
+    monthly: "Mensuel",
+    fixed: "Fixe",
+    per_student: "Par élève",
+    per_hour: "Par heure",
+    per_session: "Par séance",
+    percentage: "Pourcentage",
+  };
+  return labels[type] || type;
+}
+
+function TeacherFormDialog({ teacher, onClose, onSaved }: {
+  teacher?: Teacher | null;
+  onClose?: () => void;
+  onSaved: () => void;
+}) {
+  const t = useT();
+  const isEditing = !!teacher;
+  const [open, setOpen] = useState(false);
+  const [firstName, setFirstName] = useState(teacher?.firstName || "");
+  const [lastName, setLastName] = useState(teacher?.lastName || "");
+  const [phone, setPhone] = useState(teacher?.phone || "");
+  const [email, setEmail] = useState(teacher?.email || "");
+  const [salaryType, setSalaryType] = useState(teacher?.salaryType || "fixed");
+  const [salaryAmount, setSalaryAmount] = useState(String(teacher?.salaryAmount || ""));
+  const [subjectIds, setSubjectIds] = useState<string[]>(teacher?.subjects?.map((s) => s.id) || []);
+  const [allSubjects, setAllSubjects] = useState<SubjectInfo[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/subjects")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) setAllSubjects(data);
+      })
+      .catch(() => {});
+  }, []);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!firstName.trim() || !lastName.trim()) return;
+    setSaving(true);
+    try {
+      const payload = {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        phone: phone || undefined,
+        email: email || undefined,
+        salaryType,
+        salaryAmount: Number(salaryAmount) || 0,
+        subjectIds,
+      };
+      const url = "/api/teachers";
+      const res = await fetch(url, {
+        method: isEditing ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(isEditing ? { id: teacher.id, ...payload } : payload),
+      });
+      if (res.ok) {
+        toast.success(t("common.success"));
+        setOpen(false);
+        onSaved();
+      } else {
+        const err = await res.json();
+        toast.error(err.error || t("common.error"));
+      }
+    } catch { toast.error(t("common.error")); }
+    finally { setSaving(false); }
+  }
+
+  function handleOpenChange(open: boolean) {
+    setOpen(open);
+    if (!open) {
+      if (!isEditing) {
+        setFirstName("");
+        setLastName("");
+        setPhone("");
+        setEmail("");
+        setSalaryType("fixed");
+        setSalaryAmount("");
+        setSubjectIds([]);
+      }
+      onClose?.();
+    }
+  }
+
+  return (
+    <Dialog open={isEditing ? true : open} onOpenChange={isEditing ? undefined : handleOpenChange}>
+      {!isEditing && (
+        <DialogTrigger asChild>
+          <Button size="sm"><Plus className="size-4" /> {t("teachers.add")}</Button>
+        </DialogTrigger>
+      )}
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{isEditing ? t("teachers.edit_title") : t("teachers.add")}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-2">
+              <Label>{t("common.firstName")}</Label>
+              <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} required />
+            </div>
+            <div className="space-y-2">
+              <Label>{t("common.lastName")}</Label>
+              <Input value={lastName} onChange={(e) => setLastName(e.target.value)} required />
+            </div>
+          </div>
+          <SubjectAutocomplete
+            allSubjects={allSubjects}
+            selectedIds={subjectIds}
+            onChange={setSubjectIds}
+          />
+          <div className="space-y-2">
+            <Label>{t("common.phone")}</Label>
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>{t("common.email")}</Label>
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>{t("teachers.salary_type")}</Label>
+            <select value={salaryType} onChange={(e) => setSalaryType(e.target.value)}
+              className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm">
+              {SALARY_TYPES.map((st) => (
+                <option key={st} value={st}>{t(`teachers.${st}`)}</option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <Label>{getSalaryAmountLabel(salaryType)}</Label>
+            <Input
+              type="number"
+              min="0"
+              step={salaryType === "percentage" ? "1" : "100"}
+              max={salaryType === "percentage" ? "100" : undefined}
+              value={salaryAmount}
+              onChange={(e) => setSalaryAmount(e.target.value)}
+            />
+            {salaryType === "percentage" && (
+              <p className="text-xs text-muted-foreground">Pourcentage du revenu total du groupe</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => { if (isEditing) onClose?.(); else setOpen(false); }}>
+              {t("common.cancel")}
+            </Button>
+            <Button type="submit" disabled={saving}>{saving ? t("common.saving") : t("common.save")}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PayTeacherDialog({ teacher, onClose, onPaid }: { teacher: Teacher; onClose: () => void; onPaid: () => void }) {
+  const t = useT();
+  const [amount, setAmount] = useState(String(teacher.salaryAmount));
+  const [periodMonth, setPeriodMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!amount || Number(amount) <= 0) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/teachers/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          teacherId: teacher.id,
+          periodMonth: periodMonth + "-01",
+          amount: Number(amount),
+          notes: notes || undefined,
+        }),
+      });
+      if (res.ok) {
+        toast.success(t("common.success"));
+        onClose();
+        onPaid();
+      } else {
+        const err = await res.json();
+        toast.error(err.error || t("common.error"));
+      }
+    } catch { toast.error(t("common.error")); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>{t("teachers.pay")} — {teacher.firstName} {teacher.lastName}</DialogTitle></DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label>{t("teachers.period")}</Label>
+            <Input type="month" value={periodMonth} onChange={(e) => setPeriodMonth(e.target.value)} required />
+          </div>
+          <div className="space-y-2">
+            <Label>{t("payments.amount")}</Label>
+            <Input type="number" min="0" step="1000" value={amount} onChange={(e) => setAmount(e.target.value)} required />
+          </div>
+          <div className="space-y-2">
+            <Label>{t("common.notes")}</Label>
+            <Input value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
+            <Button type="submit" disabled={saving}>{saving ? t("common.saving") : t("common.save")}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}

@@ -1,0 +1,70 @@
+{
+  "name": "profmanager-desktop",
+  "version": "1.0.0",
+  "description": "ProfManager — Gestion de cours particuliers",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:portable": "electron-builder --win portable",
+    "publish": "electron-builder --win --publish always",
+    "package": "electron-builder --dir",
+    "installer": "electron-builder --win --prepackaged=dist/win-unpacked",
+    "dist": "node ../scripts/build-electron.js"
+  },
+  "author": "Slimani Amine",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.profmanager.desktop",
+    "productName": "ProfManager",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "standalone-server",
+        "to": "standalone-server"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ProfManager",
+      "uninstallDisplayName": "ProfManager"
+    },
+    "portable": {
+      "artifactName": "ProfManager-Portable-${version}.exe"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "slimaniamine",
+      "repo": "profmanager"
+    }
+  }
+}

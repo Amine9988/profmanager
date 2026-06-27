@@ -1,0 +1,3 @@
+{
+  "/api/sessions/regenerate/route": "app/api/sessions/regenerate/route.js"
+}

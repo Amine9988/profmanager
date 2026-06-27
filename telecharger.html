@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Télécharger ProfManager</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f0f4ff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .card {
+      background: white;
+      border-radius: 20px;
+      padding: 60px 80px;
+      text-align: center;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+      max-width: 500px;
+    }
+    h1 { color: #1e1b4b; font-size: 32px; margin-bottom: 8px; }
+    p { color: #64748b; margin-bottom: 40px; font-size: 16px; }
+    .btn {
+      display: inline-block;
+      background: #4f46e5;
+      color: white;
+      padding: 18px 48px;
+      border-radius: 12px;
+      text-decoration: none;
+      font-size: 18px;
+      font-weight: 700;
+      transition: background 0.2s;
+    }
+    .btn:hover { background: #3730a3; }
+    .info { margin-top: 20px; color: #94a3b8; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>⬇️ ProfManager</h1>
+    <p>Cliquez pour télécharger l'installateur Windows</p>
+    <a class="btn" href="electron/dist/ProfManager Setup 1.0.0.exe" download>
+      Télécharger — Windows
+    </a>
+    <div class="info">
+      Version 1.0.0 · Windows 10/11 · 84 MB
+    </div>
+  </div>
+</body>
+</html>

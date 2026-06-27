@@ -1,0 +1,3 @@
+{
+  "/(dashboard)/overdue/page": "app/(dashboard)/overdue/page.js"
+}

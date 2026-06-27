@@ -1,0 +1,26 @@
+
+> profmanager@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.9 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.100.20:3000
+- Environments: .env.local, .env
+✓ Ready in 1394ms
+
+[PROXY] Path: /groups
+[PROXY] User: slimaniamine0999@gmail.com
+○ Compiling /groups ...
+[PROXY] Path: /api/groups/TEST/schedule
+[PROXY] User: NOT LOGGED IN
+[PROXY] No user — redirecting to /login
+[PROXY] Path: /api/groups/TEST/schedule
+[PROXY] User: NOT LOGGED IN
+[PROXY] No user — redirecting to /login
+[PROXY] Path: /api/groups/TEST/schedule
+[PROXY] User: NOT LOGGED IN
+[PROXY] No user — redirecting to /login
+[PROXY] Path: /api/groups/TEST/schedule
+[PROXY] User: NOT LOGGED IN
+[PROXY] No user — redirecting to /login
+[?25h

@@ -1,0 +1,310 @@
+"use server";
+
+import { getTenantContext, requirePermission, createAuditLog, AuthError } from "@/lib/auth";
+import { studentSchema } from "@/lib/validations/student";
+import { revalidateFullApp } from "@/lib/cache";
+import { getT } from "@/lib/i18n";
+import { randomUUID } from "crypto";
+
+export type ActionResult = { error?: string; success?: boolean; id?: string };
+
+export async function getStudents() {
+  const { tenantId, supabase } = await getTenantContext();
+
+  const { data: students } = await supabase
+    .from("students")
+    .select("*, group_students(*, groups(*))")
+    .eq("tenantId", tenantId)
+    .order("fullName", { ascending: true });
+
+  return (students || []).map((s: any) => ({
+    ...s,
+    groupStudents: ((s.groupStudents || s.group_students || []) as any[]).filter((gs: any) => gs.status === "active").map((gs: any) => ({
+      ...gs,
+      group: gs.groups ? { ...gs.groups, pricePerSession: Number(gs.groups.pricePerSession) } : null,
+    })),
+  })) as any;
+}
+
+export async function getStudent(studentId: string) {
+  const { tenantId, supabase } = await getTenantContext();
+
+  const { data: student } = await supabase
+    .from("students")
+    .select("*, group_students(*, groups(*, subjects(*))), attendances(*, sessions(*)), guardians(*), payments(*)")
+    .eq("id", studentId)
+    .eq("tenantId", tenantId)
+    .single();
+
+  if (!student) return null;
+
+  return {
+    ...student,
+    monthlyFee: Number(student.monthlyFee),
+    groupStudents: ((student.group_students as any[]) || []).filter((gs: any) => gs.status === "active").map((gs: any) => ({
+      ...gs,
+      group: gs.groups ? { ...gs.groups, pricePerSession: Number(gs.groups.pricePerSession) } : null,
+    })),
+    attendances: ((student.attendances as any[]) || []).sort((a: any, b: any) => new Date(b.markedAt).getTime() - new Date(a.markedAt).getTime()).slice(0, 20).map((a: any) => ({
+      ...a,
+      session: a.sessions,
+    })),
+    guardians: (student.guardians as any[]) || [],
+    payments: ((student.payments as any[]) || []).map((p: any) => ({
+      ...p,
+      amountDue: Number(p.amountDue),
+      amountPaid: Number(p.amountPaid),
+    })),
+  };
+}
+
+export async function createStudent(_prevState: ActionResult, formData: FormData): Promise<ActionResult> {
+  const t = await getT();
+  try {
+    const ctx = await requirePermission("students.create");
+
+    const parsed = studentSchema.safeParse({
+      fullName: formData.get("fullName"),
+      dateOfBirth: formData.get("dateOfBirth") || null,
+      gradeLevel: formData.get("gradeLevel") || null,
+      schoolName: formData.get("schoolName") || null,
+      phone: formData.get("phone") || null,
+      email: formData.get("email") || null,
+      address: formData.get("address") || null,
+      notes: formData.get("notes") || null,
+      monthlyFee: formData.get("monthlyFee"),
+      subscriptionStart: formData.get("subscriptionStart"),
+      billingType: formData.get("billingType") || "monthly",
+    });
+
+    if (!parsed.success) {
+      return { error: parsed.error.issues[0]?.message ?? t("errors.invalid_data") };
+    }
+
+    const now = new Date().toISOString();
+    const { data: student } = await ctx.supabase.from("students").insert({
+      id: randomUUID(),
+      tenantId: ctx.tenantId,
+      fullName: parsed.data.fullName,
+      dateOfBirth: parsed.data.dateOfBirth || null,
+      gradeLevel: parsed.data.gradeLevel,
+      schoolName: parsed.data.schoolName,
+      phone: parsed.data.phone,
+      email: parsed.data.email || null,
+      address: parsed.data.address,
+      notes: parsed.data.notes,
+      monthlyFee: parsed.data.monthlyFee,
+      subscriptionStart: parsed.data.subscriptionStart || null,
+      billingType: parsed.data.billingType,
+      status: "active",
+      enrolledAt: now,
+      createdById: ctx.userId,
+      createdAt: now,
+      updatedAt: now,
+    }).select().single();
+
+    await createAuditLog({
+      tenantId: ctx.tenantId, userId: ctx.userId,
+      action: "student.created", entityType: "student", entityId: student!.id,
+      metadata: { fullName: student!.fullName },
+    });
+
+    revalidateFullApp();
+    return { success: true, id: student!.id };
+  } catch (e) {
+    if (e instanceof AuthError) return { error: e.message };
+    return { error: t("common.error") };
+  }
+}
+
+export async function updateStudent(studentId: string, _prevState: ActionResult, formData: FormData): Promise<ActionResult> {
+  const t = await getT();
+  try {
+    const ctx = await requirePermission("students.update");
+
+    const parsed = studentSchema.safeParse({
+      fullName: formData.get("fullName"),
+      dateOfBirth: formData.get("dateOfBirth") || null,
+      gradeLevel: formData.get("gradeLevel") || null,
+      schoolName: formData.get("schoolName") || null,
+      phone: formData.get("phone") || null,
+      email: formData.get("email") || null,
+      address: formData.get("address") || null,
+      notes: formData.get("notes") || null,
+      monthlyFee: formData.get("monthlyFee"),
+      subscriptionStart: formData.get("subscriptionStart"),
+      billingType: formData.get("billingType") || "monthly",
+    });
+
+    if (!parsed.success) {
+      return { error: parsed.error.issues[0]?.message ?? t("errors.invalid_data") };
+    }
+
+    const { data: result } = await ctx.supabase.from("students").update({
+      fullName: parsed.data.fullName,
+      dateOfBirth: parsed.data.dateOfBirth || null,
+      gradeLevel: parsed.data.gradeLevel,
+      schoolName: parsed.data.schoolName,
+      phone: parsed.data.phone,
+      email: parsed.data.email || null,
+      address: parsed.data.address,
+      notes: parsed.data.notes,
+      monthlyFee: parsed.data.monthlyFee,
+      subscriptionStart: parsed.data.subscriptionStart || null,
+      billingType: parsed.data.billingType,
+    }).eq("id", studentId).eq("tenantId", ctx.tenantId).select();
+
+    if (!result || result.length === 0) {
+      return { error: t("errors.student_not_found") };
+    }
+
+    await createAuditLog({
+      tenantId: ctx.tenantId, userId: ctx.userId,
+      action: "student.updated", entityType: "student", entityId: studentId,
+    });
+
+    revalidateFullApp();
+    return { success: true };
+  } catch (e) {
+    if (e instanceof AuthError) return { error: e.message };
+    return { error: t("common.error") };
+  }
+}
+
+export async function restoreStudent(studentId: string): Promise<ActionResult> {
+  const t = await getT();
+  try {
+    const ctx = await requirePermission("students.delete");
+    const { data } = await ctx.supabase.from("students").update({ status: "active" }).eq("id", studentId).eq("tenantId", ctx.tenantId).select();
+    if (!data || data.length === 0) return { error: t("errors.student_not_found") };
+
+    revalidateFullApp();
+    return { success: true };
+  } catch (e) {
+    if (e instanceof AuthError) return { error: e.message };
+    return { error: t("common.error") };
+  }
+}
+
+export async function archiveStudent(studentId: string): Promise<ActionResult> {
+  const t = await getT();
+  try {
+    const ctx = await requirePermission("students.delete");
+    const { data } = await ctx.supabase.from("students").update({ status: "archived" }).eq("id", studentId).eq("tenantId", ctx.tenantId).select();
+    if (!data || data.length === 0) return { error: t("errors.student_not_found") };
+
+    revalidateFullApp();
+    return { success: true };
+  } catch (e) {
+    if (e instanceof AuthError) return { error: e.message };
+    return { error: t("common.error") };
+  }
+}
+
+export async function getStudentBalance(studentId: string) {
+  const { tenantId, supabase } = await getTenantContext();
+
+  const { data: payments } = await supabase
+    .from("payments")
+    .select("amountDue, amountPaid")
+    .eq("studentId", studentId)
+    .eq("tenantId", tenantId);
+
+  const { data: student } = await supabase
+    .from("students")
+    .select("advanceBalance")
+    .eq("id", studentId)
+    .eq("tenantId", tenantId)
+    .single();
+
+  const totalDue = (payments || []).reduce((sum: number, p: any) => sum + Number(p.amountDue), 0);
+  const totalPaid = (payments || []).reduce((sum: number, p: any) => sum + Number(p.amountPaid), 0);
+
+  return {
+    totalDue,
+    totalPaid,
+    balance: totalDue - totalPaid,
+    advanceBalance: Number((student as any)?.advanceBalance || 0),
+  };
+}
+
+export async function bulkImportStudents(students: { fullName: string; gradeLevel?: string; schoolName?: string; phone?: string; email?: string }[]) {
+  const t = await getT();
+  try {
+    const ctx = await requirePermission("students.create");
+
+    const now = new Date().toISOString();
+    const rows = students.map((s) => ({
+      id: randomUUID(),
+      tenantId: ctx.tenantId,
+      fullName: s.fullName,
+      gradeLevel: s.gradeLevel || null,
+      schoolName: s.schoolName || null,
+      phone: s.phone || null,
+      email: s.email || null,
+      status: "active",
+      enrolledAt: now,
+      createdById: ctx.userId,
+      createdAt: now,
+      updatedAt: now,
+    }));
+
+    const { data, error } = await ctx.supabase.from("students").insert(rows).select();
+
+    if (error) return { imported: 0, skipped: students.length, errors: [error.message] };
+
+    revalidateFullApp();
+    return { imported: data?.length ?? 0, skipped: students.length - (data?.length ?? 0), errors: [] };
+  } catch {
+    return { imported: 0, skipped: students.length, errors: [t("common.error")] };
+  }
+}
+
+export async function deleteStudent(studentId: string): Promise<ActionResult> {
+  const t = await getT();
+  try {
+    const ctx = await requirePermission("students.delete");
+
+    const { data: student } = await ctx.supabase
+      .from("students")
+      .select("id")
+      .eq("id", studentId)
+      .eq("tenantId", ctx.tenantId)
+      .single();
+    if (!student) return { error: t("errors.student_not_found") };
+
+    // Clean up cash movements linked to this student's payments before deleting them
+    const { data: studentPayments } = await ctx.supabase
+      .from("payments")
+      .select("id")
+      .eq("studentId", studentId)
+      .eq("tenantId", ctx.tenantId);
+    if (studentPayments && studentPayments.length > 0) {
+      const paymentIds = studentPayments.map((p) => p.id);
+      await ctx.supabase.from("cash_movements").delete().in("referenceId", paymentIds).eq("autoGenerated", true);
+    }
+
+    await ctx.supabase.from("payments").delete().eq("studentId", studentId).eq("tenantId", ctx.tenantId);
+    await ctx.supabase.from("attendances").delete().eq("studentId", studentId).eq("tenantId", ctx.tenantId);
+    await ctx.supabase.from("group_students").delete().eq("studentId", studentId).eq("tenantId", ctx.tenantId);
+
+    const { error } = await ctx.supabase
+      .from("students")
+      .delete()
+      .eq("id", studentId)
+      .eq("tenantId", ctx.tenantId);
+
+    if (error) throw error;
+
+    await createAuditLog({
+      tenantId: ctx.tenantId, userId: ctx.userId,
+      action: "student.deleted", entityType: "student", entityId: studentId,
+    });
+
+    revalidateFullApp();
+    return { success: true };
+  } catch (e) {
+    if (e instanceof AuthError) return { error: e.message };
+    return { error: t("common.error") };
+  }
+}

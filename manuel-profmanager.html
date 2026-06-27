@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Manuel Utilisateur — ProfManager</title>
+<style>
+  :root {
+    --primary: #6366f1;
+    --primary-light: #eef2ff;
+    --sidebar: #1e1b4b;
+    --sidebar-hover: #312e81;
+    --text: #1e293b;
+    --text-muted: #64748b;
+    --border: #e2e8f0;
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --success: #22c55e;
+    --warning: #eab308;
+    --danger: #ef4444;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    display: flex;
+    min-height: 100vh;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    width: 280px;
+    background: var(--sidebar);
+    color: white;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    overflow-y: auto;
+    z-index: 100;
+    padding: 0;
+    flex-shrink: 0;
+  }
+  .sidebar-header {
+    padding: 20px 20px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+  }
+  .sidebar-header h1 {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+  }
+  .sidebar-header p {
+    font-size: 12px;
+    opacity: 0.7;
+    margin-top: 2px;
+  }
+  .sidebar nav { padding: 8px 0; }
+  .sidebar nav a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 20px;
+    color: rgba(255,255,255,0.8);
+    text-decoration: none;
+    font-size: 14px;
+    border-left: 3px solid transparent;
+    transition: all 0.15s;
+  }
+  .sidebar nav a:hover, .sidebar nav a.active {
+    background: var(--sidebar-hover);
+    color: white;
+    border-left-color: var(--primary);
+  }
+  .sidebar-nav-icon {
+    width: 18px;
+    text-align: center;
+    font-size: 15px;
+  }
+  .sidebar section-label {
+    padding: 16px 20px 4px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    opacity: 0.5;
+    font-weight: 600;
+  }
+
+  /* Main */
+  .main {
+    margin-left: 280px;
+    flex: 1;
+    max-width: 900px;
+    padding: 40px 48px 80px;
+  }
+  .main h2 {
+    font-size: 26px;
+    font-weight: 700;
+    margin: 40px 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--primary);
+    scroll-margin-top: 20px;
+  }
+  .main h3 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 28px 0 10px;
+    color: var(--primary);
+  }
+  .main h4 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 20px 0 6px;
+  }
+  .main p { line-height: 1.7; margin-bottom: 12px; color: #334155; }
+  .main ul, .main ol { margin: 8px 0 16px 24px; line-height: 1.7; }
+  .main li { margin-bottom: 4px; }
+  .main code {
+    background: var(--primary-light);
+    color: var(--primary);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: 'SF Mono', 'Consolas', monospace;
+  }
+
+  /* Cards */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    margin: 16px 0;
+  }
+
+  /* Badges */
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .badge-green { background: #dcfce7; color: #166534; }
+  .badge-red { background: #fee2e2; color: #991b1b; }
+  .badge-yellow { background: #fef9c3; color: #854d0e; }
+  .badge-blue { background: #dbeafe; color: #1e40af; }
+  .badge-purple { background: #f3e8ff; color: #6b21a8; }
+  .badge-gray { background: #f1f5f9; color: #475569; }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 20px;
+    font-size: 14px;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 8px 12px;
+    text-align: left;
+  }
+  th {
+    background: #f1f5f9;
+    font-weight: 600;
+    font-size: 13px;
+  }
+
+  /* Steps */
+  .step {
+    display: flex;
+    gap: 14px;
+    margin-bottom: 16px;
+    padding: 14px 18px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  .step-num {
+    width: 28px;
+    height: 28px;
+    background: var(--primary);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .step-content { flex: 1; }
+  .step-content p { margin-bottom: 0; }
+
+  /* Alert callout */
+  .alert {
+    padding: 14px 18px;
+    border-radius: var(--radius);
+    margin: 16px 0;
+    border-left: 4px solid;
+    font-size: 14px;
+  }
+  .alert-info { background: var(--primary-light); border-color: var(--primary); }
+  .alert-warning { background: #fef9c3; border-color: var(--warning); }
+  .alert-danger { background: #fee2e2; border-color: var(--danger); }
+  .alert strong { display: block; margin-bottom: 4px; }
+
+  /* Responsive */
+  .hamburger { display: none; }
+  @media (max-width: 768px) {
+    .sidebar { transform: translateX(-100%); transition: transform 0.3s; }
+    .sidebar.open { transform: translateX(0); }
+    .main { margin-left: 0; padding: 24px 20px; }
+    .hamburger {
+      display: flex;
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 200;
+      background: var(--primary);
+      color: white;
+      border: none;
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      cursor: pointer;
+    }
+  }
+
+  /* Print */
+  @media print {
+    .sidebar, .hamburger { display: none; }
+    .main { margin-left: 0; padding: 20px; }
+  }
+
+  .key {
+    display: inline-block;
+    background: #e2e8f0;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    border: 1px solid #cbd5e1;
+    font-family: monospace;
+  }
+  .img-placeholder {
+    background: #f1f5f9;
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 40px;
+    text-align: center;
+    color: var(--text-muted);
+    margin: 12px 0;
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+
+<button class="hamburger" onclick="document.querySelector('.sidebar').classList.toggle('open')">&#9776;</button>
+
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <h1>ProfManager</h1>
+    <p>Guide d'utilisation complet</p>
+  </div>
+  <nav>
+    <section-label class="section-label">Prise en main</section-label>
+    <a href="#introduction">Introduction</a>
+    <a href="#connexion">Connexion &amp; inscription</a>
+    <a href="#tableau-de-bord">Tableau de bord</a>
+
+    <section-label class="section-label">Gestion</section-label>
+    <a href="#etudiants">Élèves</a>
+    <a href="#groupes">Groupes</a>
+    <a href="#presences">Présences</a>
+    <a href="#paiements">Paiements</a>
+
+    <section-label class="section-label">Suivi &amp; planification</section-label>
+    <a href="#retards">Élèves en retard</a>
+    <a href="#calendrier">Calendrier</a>
+    <a href="#rapports">Rapports</a>
+
+    <section-label class="section-label">Configuration</section-label>
+    <a href="#parametres">Paramètres</a>
+    <a href="#sauvegarde">Sauvegarde &amp; restauration</a>
+    <a href="#reinitialisation">Réinitialisation</a>
+
+    <section-label class="section-label">Annexes</section-label>
+    <a href="#raccourcis">Raccourcis clavier</a>
+    <a href="#statuts">Statuts &amp; types</a>
+  </nav>
+</aside>
+
+<!-- Main -->
+<div class="main">
+
+<h2 id="introduction">Introduction</h2>
+<p>
+  <strong>ProfManager</strong> est une application web de gestion de cabinet de tutorat ou
+  d'enseignement. Elle vous permet de gérer vos élèves, groupes, séances, présences et
+  paiements en un seul endroit. Ce guide vous accompagne dans l'utilisation de toutes
+  les fonctionnalités.
+</p>
+
+<div class="card">
+  <strong>À propos de cette version</strong>
+  <p style="margin: 6px 0 0; font-size: 14px;">
+    Application web multi-utilisateurs avec support des langues française, anglaise et arabe.
+    Données hébergées sur Supabase. Sessions générées automatiquement selon l'année scolaire.
+  </p>
+</div>
+
+<!-- ===== CONNEXION ===== -->
+<h2 id="connexion">Connexion &amp; inscription</h2>
+
+<h3>Créer un compte</h3>
+<div class="step">
+  <div class="step-num">1</div>
+  <div class="step-content">
+    <strong>Rendez-vous sur la page d'inscription</strong>
+    <p>Cliquez sur «&nbsp;Pas encore de compte ? Essai gratuit&nbsp;» depuis la page de connexion.</p>
+  </div>
+</div>
+<div class="step">
+  <div class="step-num">2</div>
+  <div class="step-content">
+    <strong>Remplissez le formulaire</strong>
+    <p>Fournissez le nom de votre activité (ex: «&nbsp;Ahmed Benani Tutoring&nbsp;»), votre nom complet,
+    votre adresse email et un mot de passe.</p>
+  </div>
+</div>
+<div class="step">
+  <div class="step-num">3</div>
+  <div class="step-content">
+    <strong>Validez</strong>
+    <p>Cliquez sur «&nbsp;Créer mon compte&nbsp;». Vous serez redirigé vers la page d'onboarding puis
+    vers le tableau de bord.</p>
+  </div>
+</div>
+
+<h3>Se connecter</h3>
+<div class="step">
+  <div class="step-num">1</div>
+  <div class="step-content">
+    <strong>Page de connexion</strong>
+    <p>Saisissez votre adresse email et votre mot de passe.</p>
+  </div>
+</div>
+<div class="step">
+  <div class="step-num">2</div>
+  <div class="step-content">
+    <strong>Cliquez sur «&nbsp;Se connecter&nbsp;»</strong>
+    <p>Vous serez redirigé vers le tableau de bord.</p>
+  </div>
+</div>
+
+<div class="alert alert-info">
+  <strong>Mot de passe oublié ?</strong>
+  <p>Utilisez le lien «&nbsp;Mot de passe oublié&nbsp;» sur la page de connexion pour recevoir un
+  email de réinitialisation via Supabase Auth.</p>
+</div>
+
+<h3>Déconnexion</h3>
+<p>Cliquez sur votre avatar en haut à droite, puis sur le bouton <strong>Déconnexion</strong>.</p>
+
+<!-- ===== TABLEAU DE BORD ===== -->
+<h2 id="tableau-de-bord">Tableau de bord</h2>
+<p>
+  Le tableau de bord (<code>/overview</code>) est la page d'accueil après connexion.
+  Il donne un aperçu instantané de votre activité.
+</p>
+
+<h3>Barre d'actions rapides</h3>
+<p>Cinq boutons en haut de la page :</p>
+<table>
+  <tr><th>Bouton</th><th>Action</th></tr>
+  <tr><td>Ajouter un élève</td><td>Redirige vers la page Élèves</td></tr>
+  <tr><td>Enregistrer un paiement</td><td>Redirige vers la page Élèves avec le dialogue de paiement</td></tr>
+  <tr><td>Présences</td><td>Redirige vers la page Présences</td></tr>
+  <tr><td>Rapports</td><td>Redirige vers la page Rapports</td></tr>
+  <tr><td>Calendrier</td><td>Redirige vers le calendrier</td></tr>
+</table>
+
+<h3>Résumé quotidien (4 cartes)</h3>
+<table>
+  <tr><th>Carte</th><th>Description</th></tr>
+  <tr><td>Abonnements en retard</td><td>Nombre d'élèves avec paiement en retard (rouge)</td></tr>
+  <tr><td>Expiration imminente</td><td>Abonnements qui expirent bientôt (jaune)</td></tr>
+  <tr><td>Paiements en attente</td><td>Nombre de paiements non encore réglés (bleu)</td></tr>
+  <tr><td>Absences aujourd'hui</td><td>Nombre d'absences enregistrées ce jour (orange)</td></tr>
+</table>
+
+<h3>Indicateurs clés (6 cartes)</h3>
+<table>
+  <tr><th>Indicateur</th><th>Détail</th></tr>
+  <tr><td>Élèves actifs</td><td>Nombre total d'élèves avec statut actif</td></tr>
+  <tr><td>À jour</td><td>Nombre d'élèves ayant payé le mois en cours</td></tr>
+  <tr><td>Paiements en retard</td><td>Nombre d'élèves avec un paiement en retard</td></tr>
+  <tr><td>Revenu du mois</td><td>Montant total encaissé ce mois-ci</td></tr>
+  <tr><td>Dette totale</td><td>Somme totale due par les élèves en retard</td></tr>
+  <tr><td>Expiration imminente</td><td>Abonnements expirant prochainement</td></tr>
+</table>
+
+<h3>Séances du jour</h3>
+<p>Affiche la liste des séances prévues aujourd'hui avec le nom du groupe et l'heure.
+Chaque séance est un lien vers la page de prise de présence.</p>
+
+<h3>Paiements du jour</h3>
+<p>Affiche les paiements enregistrés aujourd'hui (nom de l'élève et montant).</p>
+
+<h3>Statistiques des séances</h3>
+<p>Six compteurs : Total, Complétées, Annulées, Séances supplémentaires, Séances de rattrapage, Restantes.</p>
+
+<h3>Élèves en retard de paiement</h3>
+<p>Liste jusqu'à 9 élèves avec leur solde dû. Cliquez sur un élève pour voir sa fiche détaillée.</p>
+
+<!-- ===== ÉLÈVES ===== -->
+<h2 id="etudiants">Élèves</h2>
+<p>La page Élèves (<code>/students</code>) vous permet de gérer tous vos élèves.</p>
+
+<h3>Liste des élèves</h3>
+<p>Le tableau affiche : Nom, Niveau, Téléphone, Type de tarification, Statut et Actions.</p>
+<ul>
+  <li><strong>Recherche</strong> : filtrage par nom, téléphone ou niveau.</li>
+  <li><strong>Filtres de statut</strong> : onglets Actif / Archivé / Tous.</li>
+  <li><strong>Cases à cocher</strong> : pour la sélection en masse.</li>
+  <li><strong>Barre d'actions en masse</strong> : supprimer les élèves sélectionnés.</li>
+</ul>
+
+<h3>Ajouter un élève</h3>
+<div class="step">
+  <div class="step-num">1</div>
+  <div class="step-content">
+    <strong>Cliquez sur «&nbsp;Nouvel élève&nbsp;»</strong>
+    <p>Un dialogue s'ouvre avec les champs suivants :</p>
+    <table>
+      <tr><th>Champ</th><th>Type</th><th>Obligatoire</th></tr>
+      <tr><td>Nom complet</td><td>Texte</td><td>Oui</td></tr>
+      <tr><td>Niveau</td><td>Sélection (Primaire/Collège/Lycée)</td><td>Non</td></tr>
+      <tr><td>Établissement</td><td>Texte</td><td>Non</td></tr>
+      <tr><td>Téléphone</td><td>Texte</td><td>Non</td></tr>
+      <tr><td>Email</td><td>Email</td><td>Non</td></tr>
+      <tr><td>Frais mensuels</td><td>Nombre (pas de 100)</td><td>Oui</td></tr>
+      <tr><td>Début d'abonnement</td><td>Date</td><td>Oui</td></tr>
+      <tr><td>Type de facturation</td><td>Sélection (Mensuel / Par séance)</td><td>Oui</td></tr>
+      <tr><td>Notes</td><td>Texte</td><td>Non</td></tr>
+    </table>
+  </div>
+</div>
+<div class="step">
+  <div class="step-num">2</div>
+  <div class="step-content">
+    <strong>Cliquez sur «&nbsp;Créer&nbsp;»</strong>
+    <p>L'élève est ajouté à la liste.</p>
+  </div>
+</div>
+
+<h3>Importer des élèves</h3>
+<div class="step">
+  <div class="step-num">1</div>
+  <div class="step-content">
+    <strong>Cliquez sur «&nbsp;Importer&nbsp;»</strong>
+    <p>Sélectionnez un fichier CSV ou XLSX.</p>
+  </div>
+</div>
+<div class="step">
+  <div class="step-num">2</div>
+  <div class="step-content">
+    <strong>Vérifiez l'aperçu</strong>
+    <p>Les 10 premières lignes sont affichées. Les colonnes attendues sont :
+    Nom complet (obligatoire), Niveau, Établissement, Téléphone, Email.</p>
+  </div>
+</div>
+<div class="step">
+  <div class="step-num">3</div>
+  <div class="step-content">
+    <strong>Confirmez</strong>
+    <p>Cliquez sur «&nbsp;Importer N élève(s)&nbsp;». Le résultat indique le nombre d'importations réussies et les éventuelles erreurs.</p>
+  </div>
+</div>
+
+<h3>Exporter les élèves</h3>
+<p>Cliquez sur «&nbsp;Exporter (Excel)&nbsp;» pour télécharger un fichier XLSX contenant :
+Nom complet, Niveau, Établissement, Téléphone, Email, Statut et Groupes.</p>
+
+<h3>Modifier un élève</h3>
+<p>Cliquez sur l'icône <strong>crayon</strong> dans la colonne Actions. Modifiez les champs puis cliquez sur «&nbsp;Enregistrer&nbsp;».</p>
+
+<h3>Archiver / Restaurer un élève</h3>
+<p>Cliquez sur l'icône <strong>dossier</strong> pour archiver. Un élève archivé n'apparaît plus dans les listes actives.
+Pour restaurer, basculez sur le filtre «&nbsp;Archivé&nbsp;» et cliquez sur «&nbsp;Restaurer&nbsp;».</p>
+
+<h3>Supprimer un élève</h3>
+<p>Cliquez sur l'icône <strong>corbeille</strong>. La suppression est <strong>permanente</strong> : toutes les données liées
+(paiements, présences, inscriptions aux groupes) sont également supprimées.</p>
+
+<h2 id="fiche-eleve">Fiche élève</h2>
+<p>Cliquez sur un élève pour accéder à sa fiche détaillée (<code>/students/[id]</code>).</p>
+
+<h3>En-tête</h3>
+<p>Affiche l'avatar avec les initiales, le nom, le niveau, l'établissement et les frais mensuels.
+Un bouton <strong>Modifier</strong> (crayon) permet d'éditer les informations.</p>
+
+<h3>Résumé financier</h3>
+<table>
+  <tr><th>Indicateur</th><th>Description</th></tr>
+  <tr><td>Frais mensuels</td><td>Montant facturé par mois</td></tr>
+  <tr><td>Total payé</td><td>Somme de tous les paiements effectués (vert)</td></tr>
+  <tr><td>Total dû</td><td>Somme totale due</td></tr>
+  <tr><td>Dette actuelle</td><td>Solde restant dû (rouge si &gt; 0)</td></tr>
+</table>
+
+<h3>Groupes</h3>
+<p>Affiche les groupes auxquels l'élève est inscrit sous forme de badges cliquables.</p>
+
+<h3>Onglets</h3>
+<p><strong>Paiements</strong> (par défaut) : tableau des paiements par mois avec montant dû, montant payé, statut et date.
+Bouton «&nbsp;Enregistrer un paiement&nbsp;» pour ajouter un paiement.</p>
+<p><strong>Présences</strong> : historique des présences avec date et statut (présent, absent, retard, excusé).</p>
+<p><strong>Infos</strong> : coordonnées complètes (téléphone, email, adresse, date de naissance, notes, type de facturation).</p>
+
+<!-- ===== GROUPES ===== -->
+<h2 id="groupes">Groupes</h2>
+<p>La page Groupes (<code>/groups</code>) permet de gérer les groupes d'élèves et leurs séances.</p>
+
+<h3>Liste des groupes</h3>
+<p>Affiche des cartes avec : nom, statut (Actif/Archivé), matière, nombre d'élèves, tarif, nombre de créneaux hebdomadaires.</p>
+<p>Cliquez sur une carte pour accéder au détail du groupe.</p>
+
+<h3>Créer un groupe</h3>
+<div class="step">
+  <div class="step-num">1</div>
+  <div class="step-content">
+    <strong>Cliquez sur «&nbsp;Nouveau groupe&nbsp;»</strong>
+  </div>
+</div>
+<div class="step">
+  <div class="step-num">2</div>
+  <div class="step-content">
+    <strong>Remplissez les informations</strong> :
+    <table>
+      <tr><th>Champ</th><th>Description</th></tr>
+      <tr><td>Nom du groupe</td><td>Ex: «&nbsp;Maths Terminale - Groupe A&nbsp;»</td></tr>
+      <tr><td>Matière</td><td>Sélection parmi les matières existantes</td></tr>
+      <tr><td>Niveau</td><td>Texte libre</td></tr>
+      <tr><td>Capacité max</td><td>Nombre maximum d'élèves (défaut: 10)</td></tr>
+      <tr><td>Prix par séance</td><td>Montant facturé par séance</td></tr>
+      <tr><td>Type de prix</td><td>Par séance / Mensuel / Forfait</td></tr>
+      <tr><td>Créneaux</td><td>Ajoutez un ou plusieurs créneaux (jour, heure début, heure fin)</td></tr>
+    </table>
+  </div>
+</div>
+<div class="step">
+  <div class="step-num">3</div>
+  <div class="step-content">
+    <strong>Cliquez sur «&nbsp;Créer&nbsp;»</strong>
+    <p>Les séances pour toute l'année scolaire sont automatiquement générées à partir des créneaux définis.</p>
+  </div>
+</div>
+
+<h3>Fiche groupe</h3>
+<p>La page détail (<code>/groups/[id]</code>) affiche :</p>
+<ul>
+  <li><strong>En-tête</strong> : nom, matière, niveau, tarif, boutons Modifier/Archiver/Supprimer.</li>
+  <li><strong>Statistiques</strong> : nombre d'élèves / capacité, taux de présence.</li>
+  <li><strong>Créneaux</strong> : liste des créneaux hebdomadaires. Boutons pour ajouter un créneau, une séance supplémentaire ou une séance de rattrapage.</li>
+  <li><strong>Élèves inscrits</strong> : liste des élèves avec bouton «&nbsp;Inscrire un élève&nbsp;».</li>
+  <li><strong>Séances récentes</strong> : dernières 10 séances avec statut.</li>
+</ul>
+
+<h4>Ajouter un créneau</h4>
+<p>Cliquez sur «&nbsp;Ajouter un créneau&nbsp;», choisissez le jour et les horaires.
+Les séances futures sont automatiquement générées.</p>
+
+<h4>Séance supplémentaire</h4>
+<p>Cliquez sur «&nbsp;Séance supplémentaire&nbsp;», choisissez la date, les horaires et les notes éventuelles.</p>
+
+<h4>Séance de rattrapage</h4>
+<p>Cliquez sur «&nbsp;Séance de rattrapage&nbsp;», choisissez la date, les horaires et les notes éventuelles.</p>
+
+<h4>Inscrire un élève</h4>
+<p>Cliquez sur «&nbsp;Inscrire un élève&nbsp;», recherchez un élève dans la liste déroulante, cliquez pour l'ajouter.</p>
+
+<h4>Désinscrire un élève</h4>
+<p>Cliquez sur le bouton de retrait à côté du nom de l'élève dans la liste des inscrits.</p>
+
+<!-- ===== PRÉSENCES ===== -->
+<h2 id="presences">Présences</h2>
+<p>La page Présences (<code>/attendance</code>) liste les séances à venir, groupées par date.</p>
+
+<h3>Liste des séances à venir</h3>
+<p>Chaque séance est affichée avec le nom du groupe, la matière et l'horaire.
+Cliquez sur une séance pour accéder à la prise de présence.</p>
+
+<h3>Prise de présence</h3>
+<p>Sur la page <code>/attendance/session/[id]</code> :</p>
+<ul>
+  <li><strong>En-tête</strong> : nom du groupe, date, horaire, type de séance (supplémentaire, rattrapage).
+  Bouton «&nbsp;Annuler la séance&nbsp;» (rouge) si non annulée.</li>
+  <li><strong>Marquer tout présent</strong> : bouton pour marquer tous les élèves comme présents en un clic.</li>
+  <li><strong>Liste des élèves</strong> : pour chaque élève, trois boutons : <span class="badge badge-green">Présent</span>,
+  <span class="badge badge-red">Absent</span>, <span class="badge badge-yellow">Retard</span>.
+  Le bouton actif est rempli ; les autres sont en contour.</li>
+  <li><strong>Annulation</strong> : si la séance est annulée, une bannière rouge l'indique et la prise de présence est désactivée.</li>
+</ul>
+
+<!-- ===== PAIEMENTS ===== -->
+<h2 id="paiements">Paiements</h2>
+<p>La page Paiements (<code>/payments</code>) permet de gérer les paiements des élèves.</p>
+
+<h3>Sélecteur de mois</h3>
+<p>Choisissez le mois à afficher (12 derniers mois disponibles). Le mois en cours est sélectionné par défaut.</p>
+
+<h3>Résumé du mois</h3>
+<table>
+  <tr><th>Indicateur</th><th>Description</th></tr>
+  <tr><td>Total dû</td><td>Somme des montants dus pour le mois</td></tr>
+  <tr><td>Total payé</td><td>Somme des montants payés (vert)</td></tr>
+  <tr><td>Reste à payer</td><td>Somme restante (rouge)</td></tr>
+  <tr><td>Statut</td><td>Nombre de paiements effectués / en retard</td></tr>
+</table>
+
+<h3>Générer les factures</h3>
+<p>Cliquez sur «&nbsp;Générer les factures&nbsp;» pour créer automatiquement les lignes de paiement
+pour tous les élèves actifs avec facturation mensuelle pour le mois sélectionné.</p>
+
+<h3>Enregistrer un paiement</h3>
+<div class="step">
+  <div class="step-num">1</div>
+  <div class="step-content">
+    <strong>Cliquez sur «&nbsp;Enregistrer un paiement&nbsp;»</strong>
+  </div>
+</div>
+<div class="step">
+  <div class="step-num">2</div>
+  <div class="step-content">
+    <strong>Sélectionnez l'élève</strong> (liste déroulante avec recherche).</div>
+</div>
+<div class="step">
+  <div class="step-num">3</div>
+  <div class="step-content">
+    <strong>Choisissez le mois</strong> et saisissez le montant payé. Un aperçu indique le montant dû, déjà payé et restant.</div>
+</div>
+<div class="step">
+  <div class="step-num">4</div>
+  <div class="step-content">
+    <strong>Cliquez sur «&nbsp;Enregistrer&nbsp;»</strong>
+  </div>
+</div>
+
+<h3>Tableau des paiements</h3>
+<p>Colonnes : élève, groupe(s), mois, montant dû, montant payé, reste, statut, actions.</p>
+<p><strong>Statuts</strong> : <span class="badge badge-green">Payé</span> /
+<span class="badge badge-red">En retard</span> /
+<span class="badge badge-yellow">En attente</span> /
+<span class="badge badge-blue">Partiel</span></p>
+<p><strong>Actions par ligne</strong> : Modifier, Marquer comme payé (passe le montant payé = montant dû),
+Annuler le paiement (remet à zéro), Supprimer.</p>
+
+<!-- ===== ÉLÈVES EN RETARD ===== -->
+<h2 id="retards">Élèves en retard de paiement</h2>
+<p>La page Retards (<code>/overdue</code>) liste les élèves avec des paiements en retard.</p>
+
+<h3>Filtres</h3>
+<p>Quatre onglets de filtre : Tous, 7 jours, 30 jours, Plus de 30 jours.</p>
+
+<h3>Tableau</h3>
+<p>Colonnes : élève (lien vers la fiche), téléphone, groupes, montant mensuel, date de fin, jours de retard.</p>
+
+<!-- ===== CALENDRIER ===== -->
+<h2 id="calendrier">Calendrier</h2>
+<p>Le calendrier (<code>/calendar</code>) affiche les événements du mois sous forme de grille.</p>
+
+<h3>Navigation</h3>
+<p>Flèches précédent/suivant pour changer de mois. Le mois et l'année courants sont affichés.</p>
+
+<h3>Grille du calendrier</h3>
+<p>Chaque case affiche jusqu'à 3 événements : séances (bleu), paiements dus (jaune), expirations d'abonnement (rouge).
+Cliquez sur un événement pour accéder à la page correspondante.</p>
+
+<h3>Légende</h3>
+<ul>
+  <li><strong>Livre</strong> : Séances</li>
+  <li><strong>Carte de crédit (rouge)</strong> : Expirations</li>
+  <li><strong>Triangle d'avertissement (jaune)</strong> : Paiements dus</li>
+</ul>
+
+<h3>Liste complète des événements</h3>
+<p>Sous le calendrier, tous les événements du mois sont listés avec icône, titre, date et type.</p>
+
+<!-- ===== RAPPORTS ===== -->
+<h2 id="rapports">Rapports</h2>
+<p>La page Rapports (<code>/reports</code>) présente des graphiques et statistiques.</p>
+
+<h3>Graphique des revenus mensuels</h3>
+<p>Affiche l'évolution des revenus sur 12 mois sous forme de diagramme en barres.</p>
+
+<h3>Graphique de croissance des élèves</h3>
+<p>Affiche le nombre de nouvelles inscriptions par mois sur 12 mois.</p>
+
+<h3>Rapport de présence</h3>
+<p>Pour chaque groupe, un pourcentage de présence avec barre de progression.</p>
+
+<!-- ===== PARAMÈTRES ===== -->
+<h2 id="parametres">Paramètres</h2>
+<p>La page Paramètres (<code>/settings</code>) regroupe la configuration de votre compte et de votre établissement.</p>
+
+<h3>Informations générales</h3>
+<p>Modifiez le nom de votre activité et le fuseau horaire. Cliquez sur «&nbsp;Enregistrer&nbsp;».</p>
+
+<h3>Année scolaire</h3>
+<p>Définissez les dates de début et de fin de l'année scolaire.
+Lors de l'enregistrement, toutes les séances futures sont <strong>régénérées</strong> pour tous les groupes.</p>
+
+<div class="alert alert-info">
+  <strong>Important</strong> : La génération des séances crée une séance pour chaque créneau hebdomadaire
+  entre la date de début et la date de fin. Les séances déjà complétées ou annulées sont conservées.
+</div>
+
+<h3>Langue</h3>
+<p>Choisissez entre Français, Anglais ou Arabe. La langue est sauvegardée dans un cookie et la page se recharge.</p>
+
+<h3>Matières</h3>
+<p>Consultez la liste des matières existantes (affichées avec leur couleur).
+Ajoutez une nouvelle matière en saisissant son nom et en cliquant sur «&nbsp;Ajouter&nbsp;».</p>
+
+<h3>Équipe</h3>
+<p>Liste des membres de votre établissement avec avatar, nom, email et rôle.</p>
+
+<!-- ===== SAUVEGARDE ===== -->
+<h2 id="sauvegarde">Sauvegarde &amp; restauration</h2>
+
+<h3>Créer une sauvegarde</h3>
+<p>Cliquez sur «&nbsp;Créer une sauvegarde&nbsp;». Un fichier JSON nommé <code>backup-YYYY-MM-DD.json</code>
+est téléchargé contenant toutes vos données (élèves, groupes, séances, présences, paiements, etc.).</p>
+
+<h3>Restaurer une sauvegarde</h3>
+<div class="step">
+  <div class="step-num">1</div>
+  <div class="step-content"><strong>Cliquez sur «&nbsp;Restaurer&nbsp;»</strong></div>
+</div>
+<div class="step">
+  <div class="step-num">2</div>
+  <div class="step-content"><strong>Sélectionnez un fichier JSON</strong> de sauvegarde valide.</div>
+</div>
+<div class="step">
+  <div class="step-num">3</div>
+  <div class="step-content"><strong>Confirmez</strong> la restauration. Les données sont importées dans votre compte.</div>
+</div>
+
+<div class="alert alert-warning">
+  <strong>Attention</strong> : La restauration écrase les données existantes. Assurez-vous d'avoir une sauvegarde
+  récente avant de procéder.
+</div>
+
+<!-- ===== RÉINITIALISATION ===== -->
+<h2 id="reinitialisation">Réinitialisation du système</h2>
+<p>Dans la section «&nbsp;Zone de danger&nbsp;» des paramètres :</p>
+<div class="step">
+  <div class="step-num">1</div>
+  <div class="step-content"><strong>Cliquez sur «&nbsp;Réinitialiser le système&nbsp;»</strong> (bouton rouge).</div>
+</div>
+<div class="step">
+  <div class="step-num">2</div>
+  <div class="step-content">
+    <strong>Confirmez</strong> en cliquant sur le bouton rouge «&nbsp;Confirmer&nbsp;».
+    <p><em>Cette action supprime TOUS les élèves, paiements, groupes et présences.
+    Cette action est irréversible.</em></p>
+  </div>
+</div>
+<div class="step">
+  <div class="step-num">3</div>
+  <div class="step-content">Vous êtes redirigé vers le tableau de bord après 2 secondes.</div>
+</div>
+
+<!-- ===== RACCOURCIS ===== -->
+<h2 id="raccourcis">Raccourcis clavier</h2>
+<table>
+  <tr><th>Raccourci</th><th>Action</th></tr>
+  <tr><td><span class="key">Ctrl+K</span></td><td>Ouvrir la recherche globale d'élèves</td></tr>
+  <tr><td><span class="key">Échap</span></td><td>Fermer la recherche ou tout dialogue ouvert</td></tr>
+</table>
+
+<!-- ===== STATUTS ===== -->
+<h2 id="statuts">Statuts &amp; types</h2>
+
+<h3>Statuts des élèves</h3>
+<table>
+  <tr><th>Statut</th><th>Badge</th><th>Description</th></tr>
+  <tr><td>Actif</td><td><span class="badge badge-green">Actif</span></td><td>Élève en cours de suivi</td></tr>
+  <tr><td>Archivé</td><td><span class="badge badge-gray">Archivé</span></td><td>Élève sorti du système mais données conservées</td></tr>
+</table>
+
+<h3>Types de séance</h3>
+<table>
+  <tr><th>Type</th><th>Description</th></tr>
+  <tr><td>Régulière</td><td>Séance récurrente générée à partir d'un créneau hebdomadaire</td></tr>
+  <tr><td>Supplémentaire</td><td>Séance ponctuelle ajoutée manuellement</td></tr>
+  <tr><td>Rattrapage</td><td>Séance de remplacement pour une séance annulée</td></tr>
+</table>
+
+<h3>Statuts des séances</h3>
+<table>
+  <tr><th>Statut</th><th>Badge</th><th>Description</th></tr>
+  <tr><td>Planifiée</td><td><span class="badge badge-gray">Planifiée</span></td><td>Séance à venir</td></tr>
+  <tr><td>Complétée</td><td><span class="badge badge-green">Complétée</span></td><td>Séance ayant eu lieu</td></tr>
+  <tr><td>Annulée</td><td><span class="badge badge-red">Annulée</span></td><td>Séance annulée</td></tr>
+</table>
+
+<h3>Statuts des présences</h3>
+<table>
+  <tr><th>Statut</th><th>Badge</th><th>Description</th></tr>
+  <tr><td>Présent</td><td><span class="badge badge-green">Présent</span></td><td>Élève présent</td></tr>
+  <tr><td>Absent</td><td><span class="badge badge-red">Absent</span></td><td>Élève absent</td></tr>
+  <tr><td>Retard</td><td><span class="badge badge-yellow">Retard</span></td><td>Élève arrivé en retard</td></tr>
+  <tr><td>Excusé</td><td><span class="badge badge-blue">Excusé</span></td><td>Absence justifiée</td></tr>
+</table>
+
+<h3>Statuts des paiements</h3>
+<table>
+  <tr><th>Statut</th><th>Badge</th><th>Description</th></tr>
+  <tr><td>Payé</td><td><span class="badge badge-green">Payé</span></td><td>Montant total réglé</td></tr>
+  <tr><td>En retard</td><td><span class="badge badge-red">En retard</span></td><td>Non payé après la date d'échéance</td></tr>
+  <tr><td>En attente</td><td><span class="badge badge-yellow">En attente</span></td><td>Encore dans les délais</td></tr>
+  <tr><td>Partiel</td><td><span class="badge badge-blue">Partiel</span></td><td>Payé en partie</td></tr>
+</table>
+
+<h3>Types de facturation</h3>
+<table>
+  <tr><th>Type</th><th>Badge</th><th>Description</th></tr>
+  <tr><td>Mensuel</td><td><span class="badge badge-blue">Mensuel</span></td><td>Facturation fixe chaque mois</td></tr>
+  <tr><td>Par séance</td><td><span class="badge badge-purple">Par séance</span></td><td>Facturation basée sur le nombre de séances</td></tr>
+  <tr><td>Forfait</td><td><span class="badge badge-green">Forfait</span></td><td>Forfait global</td></tr>
+</table>
+
+<h3>Rôles utilisateur</h3>
+<table>
+  <tr><th>Rôle</th><th>Description</th></tr>
+  <tr><td>Propriétaire</td><td>Accès complet à toutes les fonctionnalités et paramètres</td></tr>
+  <tr><td>Administrateur</td><td>Gestion des élèves, groupes, présences et paiements</td></tr>
+  <tr><td>Enseignant</td><td>Prise de présences et consultation des groupes</td></tr>
+</table>
+
+<div class="alert alert-info" style="margin-top: 40px;">
+  <strong>Fin du guide</strong>
+  <p>Pour toute question ou assistance supplémentaire, veuillez contacter le support technique.</p>
+</div>
+
+</div>
+
+<script>
+// Close sidebar on link click (mobile)
+document.querySelectorAll('.sidebar nav a').forEach(function(link) {
+  link.addEventListener('click', function() {
+    document.querySelector('.sidebar').classList.remove('open');
+  });
+});
+// Highlight active section on scroll
+window.addEventListener('scroll', function() {
+  var links = document.querySelectorAll('.sidebar nav a');
+  var fromTop = window.scrollY + 100;
+  var current = '';
+  links.forEach(function(a) {
+    var section = document.getElementById(a.getAttribute('href').slice(1));
+    if (section && section.offsetTop <= fromTop) current = a.getAttribute('href');
+  });
+  links.forEach(function(a) {
+    a.classList.remove('active');
+    if (a.getAttribute('href') === current) a.classList.add('active');
+  });
+});
+</script>
+
+</body>
+</html>
