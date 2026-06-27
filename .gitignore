@@ -51,3 +51,4 @@ next-env.d.ts
 /electron/package-lock.json
 
 electron/dist/*.exe
+*.exe
