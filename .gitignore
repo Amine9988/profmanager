@@ -49,6 +49,7 @@ next-env.d.ts
 /electron/node_modules/
 /electron/dist/
 /electron/package-lock.json
+/electron/standalone-server/.next/
 
 electron/dist/*.exe
 *.exe
