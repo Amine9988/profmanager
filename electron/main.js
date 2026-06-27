@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell } = require("electron");
+const { app, BrowserWindow, shell, dialog } = require("electron");
 const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
@@ -12,20 +12,65 @@ const STANDALONE_DIR = isPackaged
 
 let mainWindow;
 let serverProcess;
+let resolved = false;
 
 function log(msg) {
   try { fs.appendFileSync(LOG_FILE, new Date().toISOString() + " " + msg + "\n"); } catch {}
 }
 
+function loadEnvFile(envPath) {
+  const result = {};
+  if (!fs.existsSync(envPath)) return result;
+  const content = fs.readFileSync(envPath, "utf-8");
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eqIdx = trimmed.indexOf("=");
+    if (eqIdx === -1) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    let value = trimmed.slice(eqIdx + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (key) result[key] = value;
+  }
+  return result;
+}
+
+function httpGet(url) {
+  return new Promise((resolve, reject) => {
+    const http = require("http");
+    http.get(url, (res) => { res.resume(); resolve(true); }).on("error", reject);
+  });
+}
+
+async function waitForServer(url, maxRetries) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      await httpGet(url);
+      return true;
+    } catch {}
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return false;
+}
+
 function startServer() {
   return new Promise((resolve, reject) => {
-    const env = {
-      ...process.env,
-      PORT: PORT.toString(),
-      NODE_ENV: "production",
-      ELECTRON_RUN_AS_NODE: "1",
-    };
+    resolved = false;
     const serverPath = path.join(STANDALONE_DIR, "server.js");
+    const envPath = path.join(STANDALONE_DIR, ".env");
+
+    const env = { ...process.env };
+    env.PORT = PORT.toString();
+    env.NODE_ENV = "production";
+    env.ELECTRON_RUN_AS_NODE = "1";
+
+    const envFile = loadEnvFile(envPath);
+    log("Loaded " + Object.keys(envFile).length + " env vars from .env");
+    for (const [k, v] of Object.entries(envFile)) {
+      if (!(k in env)) env[k] = v;
+    }
 
     log("Standalone dir: " + STANDALONE_DIR);
     log("Server path: " + serverPath);
@@ -42,32 +87,32 @@ function startServer() {
       stdio: ["ignore", "pipe", "pipe"],
     });
 
-    serverProcess.stdout.on("data", (data) => {
-      const msg = data.toString();
-      log("[stdout] " + msg.trim());
-      if (msg.includes("Ready") || msg.includes("ready") || msg.includes(String(PORT))) resolve();
-    });
-
-    serverProcess.stderr.on("data", (data) => {
-      const msg = data.toString();
-      log("[stderr] " + msg.trim());
-      if (msg.includes("Ready") || msg.includes("ready") || msg.includes(String(PORT))) resolve();
-    });
+    serverProcess.stdout.on("data", (data) => log(data.toString().trim()));
+    serverProcess.stderr.on("data", (data) => log(data.toString().trim()));
 
     serverProcess.on("error", (err) => {
       log("[error] " + err.message);
-      reject(err);
+      if (!resolved) { resolved = true; reject(err); }
     });
 
     serverProcess.on("exit", (code, signal) => {
       log("[exit] code=" + code + " signal=" + signal);
-      if (code !== 0) reject(new Error("Server exited with code " + code));
+      if (!resolved) {
+        resolved = true;
+        reject(new Error("Server exited with code " + code));
+      }
     });
 
-    setTimeout(() => {
-      log("[timeout] 8s elapsed, resolving anyway");
-      resolve();
-    }, 8000);
+    const serverUrl = `http://localhost:${PORT}`;
+    const healthCheck = async () => {
+      const ok = await waitForServer(serverUrl, 30);
+      if (!resolved) {
+        resolved = true;
+        if (ok) resolve();
+        else reject(new Error("Server did not respond within 15s"));
+      }
+    };
+    healthCheck();
   });
 }
 
@@ -78,11 +123,25 @@ function createWindow() {
     minWidth: 375,
     minHeight: 600,
     title: "ProfManager",
+    show: false,
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
   });
-  mainWindow.loadURL(`http://localhost:${PORT}`);
+  mainWindow.loadURL(`http://localhost:${PORT}/login`);
+  mainWindow.once("ready-to-show", () => { mainWindow.show(); });
   mainWindow.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: "deny" }; });
   mainWindow.on("closed", () => { mainWindow = null; });
+}
+
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
 }
 
 app.whenReady().then(async () => {
@@ -94,6 +153,7 @@ app.whenReady().then(async () => {
   } catch (err) {
     log("[fatal] " + err.message);
     console.error("Failed to start server:", err);
+    dialog.showErrorBox("Erreur de démarrage", "Impossible de démarrer le serveur.\n" + err.message + "\n\nConsultez le fichier de log pour plus de détails:\n" + LOG_FILE);
     app.quit();
   }
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
