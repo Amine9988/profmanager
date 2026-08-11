@@ -1,31 +1,25 @@
 import "server-only";
 import { cache } from "react";
-import { createClient } from "@/lib/supabase/server";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-import { redirect } from "next/navigation";
+import { createLocalClient, getDb } from "@/lib/db/supabase-shim";
+import { DEFAULT_USER_ID } from "@/lib/db/schema";
 import { getT } from "@/lib/i18n";
 
 export class AuthError extends Error {}
 
-async function requireUser() {
-  const supabase = await createClient();
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.user) redirect("/login");
-  return session.user;
+function getLocalUser() {
+  return {
+    id: process.env.DEFAULT_USER_ID ?? DEFAULT_USER_ID,
+    email: "desktop@profmanager.local",
+  };
 }
 
 export const getTenantContext = cache(async () => {
-  const user = await requireUser();
+  const user = getLocalUser();
+  const client = createLocalClient();
 
-  const admin = createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  );
-
-  const { data: tenantUser } = await admin
+  const { data: tenantUser } = await client
     .from("tenant_users")
-    .select("tenantId, roleId, roles(name, role_permissions(permissions(key)))")
+    .select("tenantId, roleId, roles!inner(name, role_permissions!inner(permissions!inner(key)))")
     .eq("userId", user.id)
     .eq("status", "active")
     .order("createdAt", { ascending: true })
@@ -33,7 +27,34 @@ export const getTenantContext = cache(async () => {
     .single();
 
   if (!tenantUser) {
-    redirect("/onboarding");
+    const db = await getDb();
+    const existing = db.exec("SELECT id, tenantId, roleId FROM tenant_users WHERE status = 'active' ORDER BY createdAt ASC LIMIT 1");
+    if (existing.length > 0 && existing[0].values.length > 0) {
+      const row = existing[0].values[0];
+      const tenantId = row[1] as string;
+      const roleId = row[2] as string;
+      const roleRow = db.exec(`SELECT name FROM roles WHERE id = '${roleId}'`);
+      const roleName = (roleRow.length > 0 && roleRow[0].values.length > 0)
+        ? String(roleRow[0].values[0]) : "owner";
+      return {
+        userId: user.id,
+        email: user.email,
+        tenantId,
+        roleId,
+        roleName,
+        permissions: [],
+        supabase: client,
+      };
+    }
+    return {
+      userId: user.id,
+      email: user.email,
+      tenantId: "default-tenant-id",
+      roleId: "owner-role",
+      roleName: "owner",
+      permissions: [],
+      supabase: client,
+    };
   }
 
   const role = tenantUser.roles as unknown as Record<string, unknown>;
@@ -41,7 +62,7 @@ export const getTenantContext = cache(async () => {
 
   return {
     userId: user.id,
-    email: user.email!,
+    email: user.email,
     tenantId: tenantUser.tenantId as string,
     roleId: tenantUser.roleId as string,
     roleName: role.name as string,
@@ -49,7 +70,7 @@ export const getTenantContext = cache(async () => {
       const perm = rp.permissions as Record<string, unknown>;
       return perm.key as string;
     }),
-    supabase: admin,
+    supabase: client,
   };
 });
 
@@ -63,7 +84,7 @@ export async function requirePermission(permissionKey: string) {
   return ctx;
 }
 
-export async function createAuditLog(params: {
+export async function createAuditLog(_params: {
   tenantId: string;
   userId: string;
   action: string;
@@ -71,17 +92,5 @@ export async function createAuditLog(params: {
   entityId?: string;
   metadata?: Record<string, unknown>;
 }) {
-  const admin = createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  );
-  await admin.from("audit_logs").insert({
-    tenantId: params.tenantId,
-    userId: params.userId,
-    action: params.action,
-    entityType: params.entityType,
-    entityId: params.entityId,
-    metadata: params.metadata,
-  });
+  // Audit log disabled in local desktop mode
 }

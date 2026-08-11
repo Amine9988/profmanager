@@ -21,15 +21,28 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { code, name, capacity, floor, status } = body;
 
-    if (!code || !name) {
-      return NextResponse.json({ error: "Code and name are required" }, { status: 400 });
+    if (!name) {
+      return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
+
+    const roomCode =
+      code?.trim() ||
+      "R" +
+        (name
+          .trim()
+          .toUpperCase()
+          .replace(/\s+/g, "-")
+          .replace(/[^A-Z0-9\u0600-\u06FF-]/g, "")
+          .slice(0, 12) || "ROOM") +
+        "-" +
+        Math.floor(100 + Math.random() * 900);
 
     const { data, error } = await supabase
       .from("rooms")
       .insert({
+        id: crypto.randomUUID(),
         tenantId,
-        code,
+        code: roomCode,
         name,
         capacity: capacity ?? 0,
         floor: floor ?? null,

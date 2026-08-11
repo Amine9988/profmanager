@@ -8,10 +8,15 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status");
     const schedule = searchParams.get("schedule");
+    const withStudents = searchParams.get("withStudents") === "true";
+
+    const selectCols = withStudents
+      ? "id, name, level, maxCapacity, status, pricePerSession, priceType, roomId, group_students(*, students(id, fullName))"
+      : "id, name, level, maxCapacity, status, pricePerSession, priceType, roomId";
 
     let query = supabase
       .from("groups")
-      .select("id, name, level, subject, capacity, status, pricePerSession, monthlyPrice, roomId")
+      .select(selectCols)
       .eq("tenantId", tenantId)
       .order("name");
 
@@ -28,6 +33,21 @@ export async function GET(req: NextRequest) {
         groups.map((g: any) => ({
           ...g,
           scheduleSlots: (slots || []).filter((s: any) => s.groupId === g.id),
+        }))
+      );
+    }
+
+    if (withStudents && groups) {
+      return NextResponse.json(
+        groups.map((g: any) => ({
+          id: g.id,
+          name: g.name,
+          level: g.level,
+          pricePerSession: g.pricePerSession,
+          priceType: g.priceType,
+          students: ((g.group_students || []))
+            .filter((gs: any) => gs.status === "active" && gs.students != null)
+            .map((gs: any) => ({ id: gs.students.id, fullName: gs.students.fullName })),
         }))
       );
     }
@@ -66,6 +86,7 @@ export async function POST(request: NextRequest) {
     const { data: group, error } = await supabase
       .from("groups")
       .insert({
+        id: crypto.randomUUID(),
         tenantId,
         name: body.name,
         subjectId: body.subjectId || null,

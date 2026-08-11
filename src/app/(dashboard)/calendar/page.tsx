@@ -1,7 +1,7 @@
 import { getCalendarEvents } from "@/server/actions/calendar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CalendarDays, BookOpen, CreditCard, AlertTriangle, X } from "lucide-react";
+import { CalendarDays, BookOpen, CreditCard, AlertTriangle, X } from "@/components/ui/icons";
 import Link from "next/link";
 import { formatDate } from "@/lib/utils";
 import { getT, getInitialLocale } from "@/lib/i18n";

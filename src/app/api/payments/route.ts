@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTenantContext } from "@/lib/auth";
 import { calculateStatus, normalizePayment } from "@/lib/payments/utils";
+import { getOverdueSubscriptionsData } from "@/lib/payments/overdue";
 
 export async function GET(req: NextRequest) {
   try {
@@ -10,29 +11,44 @@ export async function GET(req: NextRequest) {
     const month = parseInt(searchParams.get("month") || String(new Date().getMonth() + 1));
     const studentId = searchParams.get("studentId");
     const statusFilter = searchParams.get("status");
+    const aggregate = searchParams.get("aggregate");
+
+    if (aggregate === "overdue") {
+      const data = await getOverdueSubscriptionsData();
+      return NextResponse.json(data);
+    }
 
     const firstOfMonth = `${year}-${String(month).padStart(2, "0")}-01`;
 
-    let query = supabase
+    const { data: payments } = await supabase
       .from("payments")
       .select("*, students(id, fullName, monthlyFee, group_students(*, groups(name)))")
       .eq("tenantId", tenantId)
       .eq("month", firstOfMonth);
 
-    if (studentId) query = query.eq("studentId", studentId);
-
-    const { data: payments } = await query.order("createdAt", { ascending: false });
-
-    const normalized = (payments || []).map(normalizePayment).map((p: any) => {
-      const computedStatus = calculateStatus(Number(p.amountDue), Number(p.amountPaid), new Date(p.month));
-      return { ...p, status: computedStatus };
+    const merged = (payments || []).map((p: any) => {
+      const norm = normalizePayment(p as Record<string, unknown>) as any;
+      const computedStatus = calculateStatus(Number(norm.amountDue), Number(norm.amountPaid), new Date(firstOfMonth));
+      return {
+        ...norm,
+        student: {
+          id: p.students?.id,
+          fullName: p.students?.fullName,
+          monthlyFee: p.students?.monthlyFee,
+          groupStudents: p.students?.group_students,
+        },
+        students: undefined,
+        status: computedStatus,
+      };
     });
 
-    if (statusFilter) {
-      return NextResponse.json(normalized.filter((p: any) => p.status === statusFilter));
+    if (studentId) {
+      return NextResponse.json(merged.filter((p: any) => p.studentId === studentId));
     }
-
-    return NextResponse.json(normalized);
+    if (statusFilter) {
+      return NextResponse.json(merged.filter((p: any) => p.status === statusFilter));
+    }
+    return NextResponse.json(merged);
   } catch {
     return NextResponse.json({ error: "Failed to fetch payments" }, { status: 500 });
   }
@@ -42,27 +58,58 @@ export async function POST(req: NextRequest) {
   try {
     const { tenantId, supabase, userId } = await getTenantContext();
     const body = await req.json();
-    const { studentId, month, amount, note } = body;
+    const { studentId, month, amount, note, paymentDate, groupId } = body;
 
     if (!studentId || !month || !amount) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const paymentDate = `${month.slice(0, 7)}-01`;
+    const paymentDateStr = paymentDate && /^\d{4}-\d{2}-\d{2}$/.test(paymentDate)
+      ? paymentDate
+      : new Date().toISOString().split("T")[0];
+    const paymentDateTime = new Date(`${paymentDateStr}T00:00:00`);
+    const paymentDateForMonth = `${month.slice(0, 7)}-01`;
+
+    let amountDue = Number(amount);
+    if (groupId) {
+      const { data: group } = await supabase
+        .from("groups")
+        .select("pricePerSession")
+        .eq("id", groupId)
+        .eq("tenantId", tenantId)
+        .maybeSingle();
+      if (group?.pricePerSession) amountDue = Number(group.pricePerSession);
+    } else {
+      const { data: student } = await supabase
+        .from("students")
+        .select("monthlyFee")
+        .eq("id", studentId)
+        .eq("tenantId", tenantId)
+        .maybeSingle();
+      if (student?.monthlyFee) amountDue = Number(student.monthlyFee);
+    }
 
     const { data: existing } = await supabase
       .from("payments")
       .select("*")
       .eq("tenantId", tenantId)
       .eq("studentId", studentId)
-      .eq("month", paymentDate)
+      .eq("month", paymentDateForMonth)
       .maybeSingle();
+
+    const alreadyPaid = existing ? Number(existing.amountPaid) : 0;
+    const remainingDue = amountDue - alreadyPaid;
+    if (amountDue > 0 && Number(amount) > remainingDue) {
+      return NextResponse.json(
+        { error: "Le montant dépasse le montant restant dû" },
+        { status: 400 }
+      );
+    }
 
     if (existing) {
       const newPaid = Number(existing.amountPaid) + Number(amount);
-      const amountDue = Number(existing.amountDue);
-      const newStatus = calculateStatus(amountDue, newPaid, new Date(paymentDate));
-      const paidAt = newStatus === "paid" ? new Date().toISOString() : existing.paidAt;
+      const newStatus = calculateStatus(amountDue, newPaid, new Date(paymentDateForMonth));
+      const paidAt = newStatus === "paid" ? paymentDateTime.toISOString() : existing.paidAt;
 
       const updateFields: Record<string, unknown> = {
         amountPaid: newPaid,
@@ -70,6 +117,7 @@ export async function POST(req: NextRequest) {
         paidAt: paidAt,
         updatedAt: new Date().toISOString(),
       };
+      if (amountDue !== Number(existing.amountDue)) updateFields.amountDue = amountDue;
       if (note !== undefined) updateFields.note = note;
 
       // receiptNumber / receiptSequence columns removed from schema — skip
@@ -98,9 +146,9 @@ export async function POST(req: NextRequest) {
             type: "income",
             category: "Paiement",
             amount: Number(amount),
-            description: `Paiement supplémentaire — ${existing.students?.fullName || "Élève"} — ${paymentDate}`,
+            description: `Paiement supplémentaire — ${existing.students?.fullName || "Élève"} — ${paymentDateForMonth}`,
             paymentMethod: "cash",
-            date: new Date().toISOString().split("T")[0],
+            date: paymentDateStr,
             referenceId: existing.id,
             autoGenerated: true,
           })
@@ -124,22 +172,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(normalizePayment(updated));
     }
 
-    const { data: student } = await supabase
-      .from("students")
-      .select("monthlyFee")
-      .eq("id", studentId)
-      .eq("tenantId", tenantId)
-      .single();
-
-    const amountDue = Number(student?.monthlyFee) || Number(amount);
-    const status = calculateStatus(amountDue, Number(amount), new Date(paymentDate));
-    const paidAt = status === "paid" ? new Date().toISOString() : null;
+    const status = calculateStatus(amountDue, Number(amount), new Date(paymentDateForMonth));
+    const paidAt = status === "paid" ? paymentDateTime.toISOString() : null;
 
     const insertFields: Record<string, unknown> = {
       id: crypto.randomUUID(),
       tenantId: tenantId,
       studentId: studentId,
-      month: paymentDate,
+      month: paymentDateForMonth,
       amountDue: amountDue,
       amountPaid: Number(amount),
       status,
@@ -173,9 +213,9 @@ export async function POST(req: NextRequest) {
           type: "income",
           category: "Paiement",
           amount: Number(amount),
-          description: `Paiement — ${payment.students?.fullName || "Élève"} — ${paymentDate}`,
+          description: `Paiement — ${payment.students?.fullName || "Élève"} — ${paymentDateForMonth}`,
           paymentMethod: "cash",
-          date: new Date().toISOString().split("T")[0],
+          date: paymentDateStr,
           referenceId: payment.id,
           autoGenerated: true,
         })

@@ -22,7 +22,7 @@ export default async function SessionAttendancePage({
   const t = await getT(locale);
   const [data, rooms] = await Promise.all([getSessionWithAttendance(id), getRooms()]);
 
-  if (!data) notFound();
+  if (!data) { notFound(); return null; }
 
   const { session, roster } = data;
   const roomName = (session as any).group?.roomId

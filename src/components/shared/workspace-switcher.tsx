@@ -5,16 +5,16 @@ import { useT } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus, Check, Building2 } from "lucide-react";
-import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { Plus, Pencil, Trash2, Check, X } from "lucide-react";
 
 interface Workspace {
   id: string;
   name: string;
-  isActive: boolean;
 }
 
 export function WorkspaceSwitcher() {
@@ -22,7 +22,8 @@ export function WorkspaceSwitcher() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [open, setOpen] = useState(false);
   const [newName, setNewName] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
 
   async function fetchWorkspaces() {
     const res = await fetch("/api/workspaces");
@@ -33,90 +34,107 @@ export function WorkspaceSwitcher() {
 
   async function handleCreate() {
     if (!newName.trim()) return;
-    setSaving(true);
-    try {
-      const res = await fetch("/api/workspaces", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newName.trim() }),
-      });
-      if (res.ok) {
-        toast.success(t("common.success"));
-        setNewName("");
-        fetchWorkspaces();
-      } else {
-        const err = await res.json();
-        toast.error(err.error || t("common.error"));
-      }
-    } catch { toast.error(t("common.error")); }
-    finally { setSaving(false); }
+    const res = await fetch("/api/workspaces", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newName.trim() }),
+    });
+    if (res.ok) {
+      setNewName("");
+      fetchWorkspaces();
+    }
   }
 
-  async function handleActivate(id: string) {
-    try {
-      const res = await fetch("/api/workspaces", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, isActive: true }),
-      });
-      if (res.ok) {
-        toast.success(t("common.success"));
-        fetchWorkspaces();
-      }
-    } catch { toast.error(t("common.error")); }
+  async function handleRename(id: string) {
+    if (!editName.trim()) return;
+    const res = await fetch("/api/workspaces", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, name: editName.trim() }),
+    });
+    if (res.ok) {
+      setEditingId(null);
+      fetchWorkspaces();
+    }
+  }
+
+  async function handleDelete(id: string) {
+    const res = await fetch("/api/workspaces", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    if (res.ok) fetchWorkspaces();
   }
 
   return (
-    <div className="border-b border-sidebar-border px-3 py-3">
-      <Dialog open={open} onOpenChange={setOpen}>
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">
-            {t("workspaces.title")}
-          </span>
+    <div className="px-3 py-2 border-b border-sidebar-border">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[10px] uppercase font-semibold text-muted-foreground/50 tracking-widest">
+          {t("workspaces.title")}
+        </span>
+        <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button variant="ghost" size="icon" className="size-5 text-muted-foreground hover:text-foreground">
+            <button className="size-4 flex items-center justify-center rounded hover:bg-sidebar-accent text-muted-foreground/50 hover:text-foreground transition-colors">
               <Plus className="size-3" />
-            </Button>
-          </DialogTrigger>
-        </div>
-        <div className="space-y-0.5">
-          {workspaces.map((w) => (
-            <button
-              key={w.id}
-              onClick={() => handleActivate(w.id)}
-              className={cn(
-                "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm transition-all duration-200",
-                w.isActive
-                  ? "bg-primary/10 text-primary font-medium"
-                  : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              )}
-            >
-              <Building2 className={cn("size-3.5 shrink-0", w.isActive && "text-primary")} />
-              <span className="truncate">{w.name}</span>
-              {w.isActive && <Check className="size-3 ml-auto text-primary" />}
             </button>
-          ))}
-          {workspaces.length === 0 && (
-            <p className="text-xs text-muted-foreground/60 px-2 py-1">{t("workspaces.no_workspaces")}</p>
-          )}
-        </div>
-        <DialogContent>
-          <DialogHeader>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[400px]">
             <DialogTitle>{t("workspaces.create")}</DialogTitle>
-          </DialogHeader>
-          <div className="flex gap-2">
-            <Input
-              placeholder={t("workspaces.name_placeholder")}
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleCreate()}
-            />
-            <Button onClick={handleCreate} disabled={saving}>
-              {saving ? t("common.saving") : t("common.create")}
-            </Button>
+            <div className="flex gap-2 mt-2">
+              <Input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder={t("workspaces.name_placeholder")}
+                onKeyDown={(e) => { if (e.key === "Enter") handleCreate(); }}
+              />
+              <Button size="sm" onClick={handleCreate}>{t("common.create")}</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+      <div className="space-y-0.5">
+        {workspaces.map((w) => (
+          <div key={w.id} className="flex items-center gap-1 group">
+            {editingId === w.id ? (
+              <>
+                <Input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="h-6 text-xs px-1.5"
+                  onKeyDown={(e) => { if (e.key === "Enter") handleRename(w.id); if (e.key === "Escape") setEditingId(null); }}
+                  autoFocus
+                />
+                <button className="size-4 flex items-center justify-center rounded hover:bg-sidebar-accent text-green-500" onClick={() => handleRename(w.id)}>
+                  <Check className="size-3" />
+                </button>
+                <button className="size-4 flex items-center justify-center rounded hover:bg-sidebar-accent text-muted-foreground" onClick={() => setEditingId(null)}>
+                  <X className="size-3" />
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="flex-1 text-xs text-muted-foreground/80 truncate">{w.name}</span>
+                <button
+                  className="size-4 flex items-center justify-center rounded hover:bg-sidebar-accent text-muted-foreground/30 hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
+                  onClick={() => { setEditingId(w.id); setEditName(w.name); }}
+                >
+                  <Pencil className="size-3" />
+                </button>
+                <button
+                  className="size-4 flex items-center justify-center rounded hover:bg-sidebar-accent text-muted-foreground/30 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                  onClick={() => handleDelete(w.id)}
+                >
+                  <Trash2 className="size-3" />
+                </button>
+              </>
+            )}
           </div>
-        </DialogContent>
-      </Dialog>
+        ))}
+        {workspaces.length === 0 && (
+          <p className="text-xs text-muted-foreground/60 px-2 py-1">{t("workspaces.no_workspaces")}</p>
+        )}
+      </div>
     </div>
   );
 }

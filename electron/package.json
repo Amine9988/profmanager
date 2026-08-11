@@ -1,6 +1,6 @@
 {
   "name": "profmanager-desktop",
-  "version": "1.0.0",
+  "version": "1.0.6",
   "description": "ProfManager — Gestion de cours particuliers",
   "main": "main.js",
   "scripts": {
@@ -25,29 +25,36 @@
     "directories": {
       "output": "dist"
     },
+    "asar": false,
+    "electronDist": "node_modules/electron/dist",
     "files": [
       "main.js",
       "preload.js",
-      "package.json"
+      "package.json",
+      "public/icon.ico"
     ],
     "extraResources": [
       {
         "from": "standalone-server",
         "to": "standalone-server"
+      },
+      {
+        "from": "platform-tools",
+        "to": "platform-tools"
       }
     ],
+
+    "icon": "public/icon.ico",
     "win": {
       "target": [
         {
           "target": "nsis",
           "arch": ["x64"]
-        },
-        {
-          "target": "portable",
-          "arch": ["x64"]
         }
       ],
-      "signAndEditExecutable": false
+      "signAndEditExecutable": true,
+      "signExecutable": false,
+      "icon": "public/icon.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -56,10 +63,11 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "ProfManager",
-      "uninstallDisplayName": "ProfManager"
-    },
-    "portable": {
-      "artifactName": "ProfManager-Portable-${version}.exe"
+      "uninstallDisplayName": "ProfManager",
+      "installerIcon": "public/icon.ico",
+      "uninstallerIcon": "public/icon.ico",
+      "installerHeaderIcon": "public/icon.ico",
+      "include": "build/installer.nsh"
     },
     "publish": {
       "provider": "github",

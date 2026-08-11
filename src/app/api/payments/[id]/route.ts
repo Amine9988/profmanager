@@ -42,7 +42,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const amountPaid = body.amountPaid !== undefined ? Number(body.amountPaid) : Number(existing.amountPaid);
     const status = calculateStatus(Number(existing.amountDue), amountPaid, new Date(existing.month));
-    const paidAt = status === "paid" && !existing.paidAt ? new Date().toISOString() : body.paidAt ?? existing.paidAt;
+    const paidAt = status === "paid" && !existing.paidAt ? new Date().toISOString() : "paidAt" in body ? body.paidAt : existing.paidAt;
 
     const oldAmountPaid = Number(existing.amountPaid);
     const newPayment = amountPaid - oldAmountPaid;
@@ -51,7 +51,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       amountPaid,
       status,
       paidAt,
-      note: body.note ?? existing.note,
+      note: "note" in body ? body.note : existing.note,
       updatedAt: new Date().toISOString(),
     };
 

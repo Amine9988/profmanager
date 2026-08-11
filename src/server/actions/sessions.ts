@@ -14,15 +14,17 @@ export async function getSchoolYearSettings() {
   let { data } = await ctx.supabase
     .from("settings")
     .select("schoolYearStart, schoolYearEnd")
+    .eq("userId", ctx.userId)
     .eq("tenantId", ctx.tenantId)
     .maybeSingle();
   if (!data) {
-    const { data: userData } = await ctx.supabase
+    const { data: d2 } = await ctx.supabase
       .from("settings")
       .select("schoolYearStart, schoolYearEnd")
-      .eq("userId", ctx.userId)
+      .eq("tenantId", ctx.tenantId)
+      .limit(1)
       .maybeSingle();
-    data = userData;
+    data = d2;
   }
   return data ? { schoolYearStart: data.schoolYearStart, schoolYearEnd: data.schoolYearEnd } : null;
 }
@@ -34,14 +36,27 @@ export async function updateSchoolYearSettings(formData: FormData): Promise<Acti
     const schoolYearStart = formData.get("schoolYearStart") as string;
     const schoolYearEnd = formData.get("schoolYearEnd") as string;
     if (!schoolYearStart || !schoolYearEnd) return { error: t("errors.invalid_data") };
-    const { error: updateErr } = await ctx.supabase.from("settings").upsert({
-      userId: ctx.userId,
-      tenantId: ctx.tenantId,
-      schoolYearStart,
-      schoolYearEnd,
-    }, { onConflict: "userId" });
-    if (updateErr) return { error: updateErr.message };
-    await regenerateAllFutureSessions();
+
+    const { data: existing } = await ctx.supabase
+      .from("settings")
+      .select("userId")
+      .eq("userId", ctx.userId)
+      .eq("tenantId", ctx.tenantId)
+      .maybeSingle();
+
+    if (existing) {
+      await ctx.supabase
+        .from("settings")
+        .update({ schoolYearStart, schoolYearEnd })
+        .eq("userId", ctx.userId)
+        .eq("tenantId", ctx.tenantId);
+    } else {
+      await ctx.supabase
+        .from("settings")
+        .insert({ userId: ctx.userId, tenantId: ctx.tenantId, schoolYearStart, schoolYearEnd });
+    }
+
+    const result = await regenerateAllFutureSessions();
     revalidateFullApp();
     return { success: true };
   } catch (e) {

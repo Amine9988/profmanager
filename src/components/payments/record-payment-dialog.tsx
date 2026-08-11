@@ -29,23 +29,44 @@ export function RecordPaymentDialog({ studentId: preselectedId, studentName, onR
   const t = useT();
   const [open, setOpen] = useState(false);
   const [students, setStudents] = useState<{ id: string; fullName: string; monthlyFee: number; advanceBalance: number }[]>([]);
+  const [groups, setGroups] = useState<{ id: string; name: string; pricePerSession: number | null; priceType: string; students: { id: string; fullName: string }[] }[]>([]);
+  const [groupId, setGroupId] = useState("");
   const [studentId, setStudentId] = useState(preselectedId || "");
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [paymentDate, setPaymentDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
   const [amount, setAmount] = useState("");
-  const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [existingPayment, setExistingPayment] = useState<{ amountDue: number; amountPaid: number } | null>(null);
 
   useEffect(() => {
     if (open) {
-      fetch("/api/students?status=active")
+      fetch("/api/groups?withStudents=true")
+        .then((r) => r.json())
+        .then((data) => {
+          const list = Array.isArray(data) ? data : [];
+          setGroups(list);
+          if (preselectedId) {
+            const g = list.find((x: any) => (x.students || []).some((s: any) => s.id === preselectedId));
+            if (g) {
+              setGroupId(g.id);
+              if (g.pricePerSession) setAmount(String(g.pricePerSession));
+            }
+          }
+        })
+        .catch(() => {});
+      fetch("/api/students")
         .then((r) => r.json())
         .then(setStudents)
         .catch(() => {});
       requestAnimationFrame(() => {
-        if (!preselectedId) setStudentId("");
+        if (!preselectedId) {
+          setGroupId("");
+          setStudentId("");
+        }
         setAmount("");
-        setNote("");
         setExistingPayment(null);
       });
     }
@@ -65,22 +86,35 @@ export function RecordPaymentDialog({ studentId: preselectedId, studentName, onR
       .catch(() => setExistingPayment(null));
   }, [studentId, month]);
 
+  const selectedGroup = groups.find((g) => g.id === groupId);
+  const studentGroups = preselectedId ? groups.filter((g) => g.students.some((s) => s.id === preselectedId)) : [];
+  const displayGroups = preselectedId ? (studentGroups.length > 0 ? studentGroups : groups) : groups;
+  const availableStudents = selectedGroup?.students || [];
   const selectedStudentData = students.find((s) => s.id === studentId);
-  const amountDue = existingPayment?.amountDue ?? selectedStudentData?.monthlyFee ?? 0;
+  const amountDue = existingPayment?.amountDue ?? selectedGroup?.pricePerSession ?? 0;
   const alreadyPaid = existingPayment?.amountPaid ?? 0;
   const remaining = Math.max(amountDue - alreadyPaid, 0);
   const advanceBalance = selectedStudentData?.advanceBalance ?? 0;
+  const maxAllowed = existingPayment
+    ? Math.max(amountDue - alreadyPaid, 0)
+    : amountDue > 0
+      ? amountDue
+      : Infinity;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const amt = Number(amount);
-    if (!studentId || !month || !amt || amt <= 0) return;
+    if (!studentId || !groupId || !month || !amt || amt <= 0) return;
+    if (amt > maxAllowed) {
+      toast.error(t("payments.amount_exceeds"));
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch("/api/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ studentId, month, amount: amt, note: note || undefined }),
+        body: JSON.stringify({ studentId, groupId, month, amount: amt, paymentDate }),
       });
       if (res.ok) {
         toast.success(t("payments.paymentRecorded"));
@@ -112,6 +146,31 @@ export function RecordPaymentDialog({ studentId: preselectedId, studentName, onR
           <DialogTitle>{displayName ? `${t("payments.newPayment")} — ${displayName}` : t("payments.newPayment")}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="group">{t("payments.group")}</Label>
+            <select
+              id="group"
+              value={groupId}
+              onChange={(e) => {
+                const gid = e.target.value;
+                setGroupId(gid);
+                if (!preselectedId) setStudentId("");
+                const g = groups.find((x) => x.id === gid);
+                if (g?.pricePerSession) setAmount(String(g.pricePerSession));
+                else setAmount("");
+              }}
+              required
+              className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="">{t("common.select")}</option>
+              {displayGroups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                  {g.pricePerSession != null ? ` — ${formatCurrency(g.pricePerSession)}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
           {!preselectedId && (
             <div className="space-y-2">
               <Label htmlFor="student">{t("payments.student")}</Label>
@@ -123,7 +182,7 @@ export function RecordPaymentDialog({ studentId: preselectedId, studentName, onR
                 className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               >
                 <option value="">{t("common.select")}</option>
-                {students.map((s) => (
+                {availableStudents.map((s) => (
                   <option key={s.id} value={s.id}>{s.fullName}</option>
                 ))}
               </select>
@@ -133,8 +192,25 @@ export function RecordPaymentDialog({ studentId: preselectedId, studentName, onR
             <Label htmlFor="month">{t("payments.month")}</Label>
             <Input id="month" type="month" value={month} onChange={(e) => setMonth(e.target.value)} required />
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="paymentDate">{t("payments.payment_date")}</Label>
+            <div className="flex gap-2">
+              <Input id="paymentDate" type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} required className="flex-1" />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const d = new Date();
+                  setPaymentDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+                }}
+              >
+                {t("common.today")}
+              </Button>
+            </div>
+          </div>
 
-          {studentId && month && (
+          {groupId && studentId && month && (
             <div className="rounded-lg border bg-muted/30 p-4 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">{t("payments.amount_due")}</span>
@@ -161,17 +237,13 @@ export function RecordPaymentDialog({ studentId: preselectedId, studentName, onR
 
           <div className="space-y-2">
             <Label htmlFor="amount">{t("payments.amount_paid")}</Label>
-            <Input id="amount" type="number" min="0" step="100" value={amount} onChange={(e) => setAmount(e.target.value)} required placeholder={t("payments.amount_paid")} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="note">{t("payments.notes_label")}</Label>
-            <Input id="note" value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("payments.notes_placeholder")} />
+            <Input id="amount" type="number" min="0" step="100" max={Number.isFinite(maxAllowed) ? maxAllowed : undefined} value={amount} onChange={(e) => setAmount(e.target.value)} required placeholder={t("payments.amount_paid")} />
           </div>
           <DialogFooter className="flex gap-2">
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               {t("common.cancel")}
             </Button>
-            <Button type="submit" disabled={saving || !amount || Number(amount) <= 0}>
+            <Button type="submit" disabled={saving || !amount || Number(amount) <= 0 || (Number.isFinite(maxAllowed) && Number(amount) > maxAllowed)}>
               {saving ? t("payments.recording") : t("payments.record")}
             </Button>
           </DialogFooter>

@@ -17,38 +17,193 @@ function run(cmd, cwd) {
 function copyDir(src, dst) {
   if (!fs.existsSync(src)) throw new Error(`Source not found: ${src}`);
   if (fs.existsSync(dst)) fs.rmSync(dst, { recursive: true, force: true });
-  fs.mkdirSync(dst, { recursive: true });
-  execSync(`xcopy /e /i /q "${src}" "${dst}\\"`, { stdio: "inherit" });
+  // Copy with verbatimSymlinks=true to preserve pnpm junction structure
+  // (junctions must stay intact for Node.js module resolution to work)
+  fs.cpSync(src, dst, { recursive: true, force: true, errorOnExist: false, verbatimSymlinks: true });
 }
 
 console.log("=== Build Electron (full pipeline) ===");
 
 // Step 1: Build Next.js standalone
 console.log("\n[1/5] Building Next.js standalone...");
-run("npm run build", ROOT);
+// Remove dev-only artifacts (.next/dev, .next/trace etc.) left behind by a
+// running `next dev` — a stale dev build can fail the production type-check.
+const STALE_DEV = [".next/dev", ".next/types"];
+for (const dir of STALE_DEV) {
+  const p = path.join(ROOT, dir);
+  if (fs.existsSync(p)) {
+    fs.rmSync(p, { recursive: true, force: true });
+    console.log(`  removed stale ${dir}/ (from a previous dev server)`);
+  }
+}
+run("node node_modules\\next\\dist\\bin\\next build", ROOT);
 
-// Step 2: Copy standalone server into electron/
-console.log("\n[2/5] Copying standalone server to electron/...");
+// Step 2: Remove project-root junctions from standalone .next/node_modules before copy
+const STANDALONE_DOT_NEXT_NM = path.join(STANDALONE_SRC, ".next", "node_modules");
+if (fs.existsSync(STANDALONE_DOT_NEXT_NM)) {
+  console.log("\n[2/5] Removing standalone .next/node_modules/ (project-root junctions)...");
+  fs.rmSync(STANDALONE_DOT_NEXT_NM, { recursive: true, force: true });
+}
+
+// Step 2b: Copy standalone server into electron/ (preserve pnpm junctions with verbatimSymlinks)
+console.log("\n[2b/5] Copying standalone server to electron/...");
 if (fs.existsSync(STANDALONE_DST)) fs.rmSync(STANDALONE_DST, { recursive: true, force: true });
 copyDir(STANDALONE_SRC, STANDALONE_DST);
 
-// Step 3: Create unpacked Electron app
-console.log("\n[3/5] Creating unpacked Electron app...");
-run("npm run package", ELECTRON);
+// Step 2c: Copy static assets into standalone .next (Next.js standalone omits them)
+const STATIC_SRC = path.join(ROOT, ".next", "static");
+const STATIC_DST = path.join(STANDALONE_DST, ".next", "static");
+if (fs.existsSync(STATIC_SRC) && !fs.existsSync(STATIC_DST)) {
+  console.log("\n[2c/5] Copying static assets...");
+  copyDir(STATIC_SRC, STATIC_DST);
+  const files = fs.readdirSync(path.join(STATIC_DST, "chunks"));
+  const cssCount = files.filter(f => f.endsWith(".css")).length;
+  console.log(`  ${files.length} chunks (${cssCount} CSS files)`);
+}
 
-// Step 4: Copy standalone server (with node_modules) into unpacked resources
-console.log("\n[4/5] Copying standalone server to win-unpacked...");
-if (fs.existsSync(RESOURCES)) fs.rmSync(RESOURCES, { recursive: true, force: true });
-copyDir(STANDALONE_DST, RESOURCES);
+// Step 2d: Clean up standalone server — remove source files, logs, duplicates
+console.log("\n[2d/5] Cleaning standalone server...");
+const CLEAN_DIRS = ["profmanager", "src", "electron", "scripts", "certafica"];
+for (const dir of CLEAN_DIRS) {
+  const p = path.join(STANDALONE_DST, dir);
+  if (fs.existsSync(p)) { fs.rmSync(p, { recursive: true, force: true }); console.log(`  removed ${dir}/`); }
+}
+const CLEAN_GLOBS = [
+  "*.log", "dev_error.txt", "dev_output.txt", "debug-select.js", "check-compiled.js",
+  "resolve-*.js", "cookies*.txt", "done.txt", "response.txt", "stderr.txt", "stdout.txt",
+  "test-*", "rebuild.bat", "setup-standalone-nm.js", "pnpm-*", "package-lock.json",
+  "telecharger.html", "manuel-*.html", "migration-*.sql", "supabase-migration-*.sql",
+  "0", "pm_logo.svg", "next-env.d.ts", "tsconfig.json", "eslint.config.mjs",
+  "postcss.config.mjs", "CLAUDE.md", "DECISIONS.md", "README.md", "AGENTS.md"
+];
+for (const pattern of CLEAN_GLOBS) {
+  const matches = fs.readdirSync(STANDALONE_DST).filter(f => {
+    if (pattern.includes("*")) {
+      const re = new RegExp("^" + pattern.replace(/\*/g, ".*") + "$");
+      return re.test(f);
+    }
+    return f === pattern;
+  });
+  for (const f of matches) {
+    const fp = path.join(STANDALONE_DST, f);
+    try { fs.rmSync(fp, { recursive: true, force: true }); } catch {}
+  }
+}
+console.log("  cleanup done");
 
-const hasNext = fs.existsSync(path.join(RESOURCES, "node_modules", "next"));
-console.log(`  node_modules/next: ${hasNext ? "PRESENT" : "MISSING"}`);
+// Step 3: Bind to all interfaces (LAN access) so a phone can scan on the same network
+console.log("\n[3/5] Binding server.js to 0.0.0.0...");
+const SERVER_JS = path.join(STANDALONE_DST, "server.js");
+let srv = fs.readFileSync(SERVER_JS, "utf8");
+srv = srv.replace(/const hostname = process\.env\.HOSTNAME \|\| '127\.0\.0\.1'/, `const hostname = process.env.HOSTNAME || '0.0.0.0'`);
+srv = srv.replace(/const hostname = process\.env\.HOSTNAME \|\| '0\.0\.0\.0'/, `const hostname = process.env.HOSTNAME || '0.0.0.0'`);
+fs.writeFileSync(SERVER_JS, srv, "utf8");
+console.log("  hostname default set to 0.0.0.0 (LAN scanning enabled)");
 
-// Step 5: Build installer from prepackaged
-console.log("\n[5/5] Building installer from prepackaged...");
-run("npm run installer", ELECTRON);
+// Step 4a: Build unpackaged app directory
+console.log("\n[4a/4] Building unpackaged app directory...");
+run("node node_modules\\electron-builder\\cli.js --dir", ELECTRON);
+
+// Step 4b: Copy node_modules with junctions intact, then resolve all junctions for distribution
+console.log("\n[4b/4] Copying node_modules into unpackaged app...");
+const RESOURCES_NM = path.join(WIN_UNPACKED, "resources", "standalone-server", "node_modules");
+if (fs.existsSync(RESOURCES_NM)) fs.rmSync(RESOURCES_NM, { recursive: true, force: true });
+const srcNm = path.join(STANDALONE_DST, "node_modules");
+const dstNm = path.join(WIN_UNPACKED, "resources", "standalone-server", "node_modules");
+// Preserve junction structure (needed for module resolution)
+fs.cpSync(srcNm, dstNm, { recursive: true, force: true, errorOnExist: false, verbatimSymlinks: true });
+console.log("  node_modules copied (with junctions)");
+
+// Resolve all junctions in the destination to real directories (NSIS cannot handle junctions)
+console.log("  resolving all junctions to real directories...");
+(function resolveJunctions(dir, depth) {
+  if (depth > 10) return; // safety limit
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isSymbolicLink()) {
+      const target = path.resolve(dir, fs.readlinkSync(fullPath));
+      fs.unlinkSync(fullPath);
+      try {
+        const stat = fs.statSync(target);
+        if (stat.isDirectory()) {
+          resolveJunctions(target, depth + 1);
+          fs.cpSync(target, fullPath, { recursive: true, force: true });
+        } else {
+          fs.cpSync(target, fullPath, { force: true });
+        }
+      } catch (e) {
+        if (e.code === "ENOENT") {
+          // broken junction — skip
+        } else { throw e; }
+      }
+    } else if (entry.isDirectory()) {
+      resolveJunctions(fullPath, depth + 1);
+    }
+  }
+})(dstNm, 0);
+console.log("  all junctions resolved");
+
+// Promote packages from .pnpm/*/node_modules/ to root (needed after flattening)
+console.log("  promoting .pnpm packages to root level...");
+(function promote(nmDir) {
+  const pnpmDir = path.join(nmDir, ".pnpm");
+  if (!fs.existsSync(pnpmDir)) return;
+  const pnpmEntries = fs.readdirSync(pnpmDir, { withFileTypes: true });
+  let promoted = 0;
+  for (const pkgEntry of pnpmEntries) {
+    if (!pkgEntry.isDirectory()) continue;
+    const nm = path.join(pnpmDir, pkgEntry.name, "node_modules");
+    if (!fs.existsSync(nm)) continue;
+    const scopeEntries = fs.readdirSync(nm, { withFileTypes: true });
+    for (const se of scopeEntries) {
+      const src = path.join(nm, se.name);
+      const dst = path.join(nmDir, se.name);
+      if (fs.existsSync(dst)) continue;
+      if (se.name === ".pnpm") continue;
+      fs.cpSync(src, dst, { recursive: true, force: true });
+      promoted++;
+    }
+  }
+  console.log("  promoted " + promoted + " packages to root");
+  fs.rmSync(pnpmDir, { recursive: true, force: true });
+  console.log("  removed .pnpm/");
+})(dstNm);
+
+// Copy hashed external modules from source .next/node_modules to destination
+// (Turbopack SSR chunks may require modules like sql.js-<hash> directly)
+const SRC_NEXT_NM = path.join(ROOT, ".next", "node_modules");
+if (fs.existsSync(SRC_NEXT_NM)) {
+  const srcEntries = fs.readdirSync(SRC_NEXT_NM, { withFileTypes: true });
+  const hashedExternals = srcEntries
+    .filter(e => (e.isDirectory() || e.isSymbolicLink()) && /^[a-z].*-[a-f0-9]{16}$/.test(e.name));
+  if (hashedExternals.length > 0) {
+    console.log("  copying " + hashedExternals.length + " hashed external modules...");
+    for (const entry of hashedExternals) {
+      const src = path.join(SRC_NEXT_NM, entry.name);
+      const dst = path.join(dstNm, entry.name);
+      if (!fs.existsSync(dst)) {
+        // Resolve junction target if needed
+        let realSrc = src;
+        try {
+          if (fs.lstatSync(src).isSymbolicLink()) {
+            realSrc = path.resolve(SRC_NEXT_NM, fs.readlinkSync(src));
+          }
+        } catch (e) { /* ignore */ }
+        fs.cpSync(realSrc, dst, { recursive: true, force: true });
+        console.log("    copied " + entry.name);
+      }
+    }
+  }
+}
+
+// Step 4c: Build NSIS installer from the modified unpackaged app
+console.log("\n[4c/4] Building NSIS installer from unpackaged app...");
+run("node node_modules\\electron-builder\\cli.js --win --prepackaged=dist/win-unpacked", ELECTRON);
 
 console.log("\n=== Done ===");
 console.log("Output files:");
-console.log("  " + path.join(ELECTRON, "dist", "ProfManager Setup 1.0.0.exe"));
-console.log("  " + path.join(ELECTRON, "dist", "ProfManager-Portable-1.0.0.exe"));
+const pkg = JSON.parse(fs.readFileSync(path.join(ELECTRON, "package.json"), "utf8"));
+console.log("  " + path.join(ELECTRON, "dist", `ProfManager Setup ${pkg.version}.exe`));
+console.log("  " + path.join(ELECTRON, "dist", `ProfManager-Portable-${pkg.version}.exe`));
+

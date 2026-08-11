@@ -31,7 +31,7 @@ export function generateReceiptString(year: string, seq: number): string {
 
 export function calculateStatus(amountDue: number, amountPaid: number, month: Date): string {
   if (amountPaid >= amountDue) return "paid";
-  if (amountPaid > 0) return "partial";
+  if (amountPaid > 0) return "overdue";
   const now = new Date();
   const monthEnd = new Date(month.getFullYear(), month.getMonth() + 1, 0);
   if (now > monthEnd) return "overdue";

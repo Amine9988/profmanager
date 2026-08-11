@@ -2,12 +2,11 @@
 
 import { useT } from "@/lib/i18n";
 import { memo } from "react";
-import { logout } from "@/server/actions/auth";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { NotificationBell } from "@/components/shared/notification-bell";
 import { LanguageSwitcher } from "@/components/shared/language-switcher";
-import { LogOut, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { initials } from "@/lib/utils";
 import { useRef } from "react";
@@ -59,11 +58,6 @@ export const Topbar = memo(function Topbar({ userName, tenantName }: { userName:
           </Avatar>
           <span className="hidden text-sm font-medium sm:inline">{userName}</span>
         </div>
-        <form action={logout}>
-          <Button type="submit" variant="ghost" size="icon" title={t("nav.logout")} className="text-muted-foreground hover:text-foreground">
-            <LogOut className="size-4" />
-          </Button>
-        </form>
       </div>
     </header>
   );

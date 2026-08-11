@@ -1,4 +1,6 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+interface LocalSupabase {
+  from(table: string): any;
+}
 
 export interface ConflictCheck {
   hasConflict: boolean;
@@ -15,7 +17,7 @@ export interface ConflictCheck {
  * Two groups sharing the same room with overlapping times on the same day is a conflict.
  */
 export async function checkRoomConflict(
-  supabase: SupabaseClient,
+  supabase: LocalSupabase,
   params: {
     tenantId: string;
     roomId: string;
@@ -67,7 +69,7 @@ export async function checkRoomConflict(
  * Check room conflicts for multiple schedule slots at once.
  */
 export async function checkRoomConflictsForSlots(
-  supabase: SupabaseClient,
+  supabase: LocalSupabase,
   params: {
     tenantId: string;
     roomId: string;

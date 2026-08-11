@@ -11,11 +11,16 @@ export type ActionResult = { error?: string; success?: boolean; id?: string };
 export async function getStudents() {
   const { tenantId, supabase } = await getTenantContext();
 
-  const { data: students } = await supabase
+  const { data: students, error } = await supabase
     .from("students")
     .select("*, group_students(*, groups(*))")
     .eq("tenantId", tenantId)
     .order("fullName", { ascending: true });
+
+  if (error) {
+    console.error("[getStudents] Query error:", error.message, "SQL:", error.details);
+    return [];
+  }
 
   return (students || []).map((s: any) => ({
     ...s,
@@ -31,7 +36,7 @@ export async function getStudent(studentId: string) {
 
   const { data: student } = await supabase
     .from("students")
-    .select("*, group_students(*, groups(*, subjects(*))), attendances(*, sessions(*)), guardians(*), payments(*)")
+    .select("*, group_students(*, groups(*, subjects(*))), attendances(*, sessions(*)), payments(*)")
     .eq("id", studentId)
     .eq("tenantId", tenantId)
     .single();
@@ -45,12 +50,12 @@ export async function getStudent(studentId: string) {
       ...gs,
       group: gs.groups ? { ...gs.groups, pricePerSession: Number(gs.groups.pricePerSession) } : null,
     })),
-    attendances: ((student.attendances as any[]) || []).sort((a: any, b: any) => new Date(b.markedAt).getTime() - new Date(a.markedAt).getTime()).slice(0, 20).map((a: any) => ({
+    attendances: (Array.isArray(student.attendances) ? student.attendances : student.attendances ? [student.attendances] : []).sort((a: any, b: any) => new Date(b.markedAt).getTime() - new Date(a.markedAt).getTime()).slice(0, 20).map((a: any) => ({
       ...a,
       session: a.sessions,
     })),
     guardians: (student.guardians as any[]) || [],
-    payments: ((student.payments as any[]) || []).map((p: any) => ({
+    payments: (Array.isArray(student.payments) ? student.payments : student.payments ? [student.payments] : []).map((p: any) => ({
       ...p,
       amountDue: Number(p.amountDue),
       amountPaid: Number(p.amountPaid),
@@ -69,6 +74,7 @@ export async function createStudent(_prevState: ActionResult, formData: FormData
       gradeLevel: formData.get("gradeLevel") || null,
       schoolName: formData.get("schoolName") || null,
       phone: formData.get("phone") || null,
+      fatherPhone: formData.get("fatherPhone") || null,
       email: formData.get("email") || null,
       address: formData.get("address") || null,
       notes: formData.get("notes") || null,
@@ -90,6 +96,7 @@ export async function createStudent(_prevState: ActionResult, formData: FormData
       gradeLevel: parsed.data.gradeLevel,
       schoolName: parsed.data.schoolName,
       phone: parsed.data.phone,
+      fatherPhone: parsed.data.fatherPhone,
       email: parsed.data.email || null,
       address: parsed.data.address,
       notes: parsed.data.notes,
@@ -128,6 +135,7 @@ export async function updateStudent(studentId: string, _prevState: ActionResult,
       gradeLevel: formData.get("gradeLevel") || null,
       schoolName: formData.get("schoolName") || null,
       phone: formData.get("phone") || null,
+      fatherPhone: formData.get("fatherPhone") || null,
       email: formData.get("email") || null,
       address: formData.get("address") || null,
       notes: formData.get("notes") || null,
@@ -146,6 +154,7 @@ export async function updateStudent(studentId: string, _prevState: ActionResult,
       gradeLevel: parsed.data.gradeLevel,
       schoolName: parsed.data.schoolName,
       phone: parsed.data.phone,
+      fatherPhone: parsed.data.fatherPhone,
       email: parsed.data.email || null,
       address: parsed.data.address,
       notes: parsed.data.notes,

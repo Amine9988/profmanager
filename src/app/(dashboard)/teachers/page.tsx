@@ -36,13 +36,13 @@ const SALARY_TYPES = [
 
 function getSalaryAmountLabel(type: string): string {
   switch (type) {
-    case "monthly":     return "Salaire mensuel (د.ج)";
-    case "fixed":       return "Montant fixe (د.ج)";
-    case "per_student": return "Montant par élève (د.ج)";
-    case "per_hour":    return "Tarif horaire (د.ج)";
-    case "per_session": return "Montant par séance (د.ج)";
-    case "percentage":  return "Pourcentage (%)";
-    default:            return "Montant (د.ج)";
+    case "monthly":     return "الراتب الشهري (د.ج)";
+    case "fixed":       return "المبلغ الثابت (د.ج)";
+    case "per_student": return "المبلغ لكل تلميذ (د.ج)";
+    case "per_hour":    return "الأجر بالساعة (د.ج)";
+    case "per_session": return "المبلغ لكل حصة (د.ج)";
+    case "percentage":  return "النسبة المئوية (%)";
+    default:            return "المبلغ (د.ج)";
   }
 }
 
@@ -270,10 +270,8 @@ function TeacherFormDialog({ teacher, onClose, onSaved }: {
   const t = useT();
   const isEditing = !!teacher;
   const [open, setOpen] = useState(false);
-  const [firstName, setFirstName] = useState(teacher?.firstName || "");
-  const [lastName, setLastName] = useState(teacher?.lastName || "");
+  const [name, setName] = useState([teacher?.firstName, teacher?.lastName].filter(Boolean).join(" ") || "");
   const [phone, setPhone] = useState(teacher?.phone || "");
-  const [email, setEmail] = useState(teacher?.email || "");
   const [salaryType, setSalaryType] = useState(teacher?.salaryType || "fixed");
   const [salaryAmount, setSalaryAmount] = useState(String(teacher?.salaryAmount || ""));
   const [subjectIds, setSubjectIds] = useState<string[]>(teacher?.subjects?.map((s) => s.id) || []);
@@ -291,14 +289,12 @@ function TeacherFormDialog({ teacher, onClose, onSaved }: {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!firstName.trim() || !lastName.trim()) return;
+    if (!name.trim()) return;
     setSaving(true);
     try {
       const payload = {
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
+        fullName: name.trim(),
         phone: phone || undefined,
-        email: email || undefined,
         salaryType,
         salaryAmount: Number(salaryAmount) || 0,
         subjectIds,
@@ -325,10 +321,8 @@ function TeacherFormDialog({ teacher, onClose, onSaved }: {
     setOpen(open);
     if (!open) {
       if (!isEditing) {
-        setFirstName("");
-        setLastName("");
+        setName("");
         setPhone("");
-        setEmail("");
         setSalaryType("fixed");
         setSalaryAmount("");
         setSubjectIds([]);
@@ -349,15 +343,9 @@ function TeacherFormDialog({ teacher, onClose, onSaved }: {
           <DialogTitle>{isEditing ? t("teachers.edit_title") : t("teachers.add")}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-2">
-              <Label>{t("common.firstName")}</Label>
-              <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} required />
-            </div>
-            <div className="space-y-2">
-              <Label>{t("common.lastName")}</Label>
-              <Input value={lastName} onChange={(e) => setLastName(e.target.value)} required />
-            </div>
+          <div className="space-y-2">
+            <Label>{t("teachers.fullName")}</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
           <SubjectAutocomplete
             allSubjects={allSubjects}
@@ -367,10 +355,6 @@ function TeacherFormDialog({ teacher, onClose, onSaved }: {
           <div className="space-y-2">
             <Label>{t("common.phone")}</Label>
             <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label>{t("common.email")}</Label>
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
           <div className="space-y-2">
             <Label>{t("teachers.salary_type")}</Label>

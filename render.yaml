@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: profmanager
+    runtime: node
+    plan: free
+    buildCommand: pnpm install --frozen-lockfile && pnpm run build:render
+    startCommand: node .next/standalone/server.js
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: HOSTNAME
+        value: 0.0.0.0
+      - key: NEXT_PUBLIC_APP_NAME
+        value: ProfManager

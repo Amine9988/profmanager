@@ -1,33 +1,19 @@
-import { createClient } from "@/lib/supabase/server";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { getTenantContext } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { generateSessionDates } from "@/lib/generate-sessions";
 
 export const dynamic = "force-dynamic";
 
 export async function POST() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  let ctx;
+  try {
+    ctx = await getTenantContext();
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
-  // Lookup tenant info
-  const admin = createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  );
-  const { data: tu } = await admin
-    .from("tenant_users")
-    .select("tenantId")
-    .eq("userId", user.id)
-    .eq("status", "active")
-    .limit(1)
-    .maybeSingle();
-  if (!tu) return NextResponse.json({ error: "No tenant found" }, { status: 400 });
+  const { supabase: admin, tenantId } = ctx;
 
-  const tenantId = (tu as any).tenantId;
-
-  // Read settings by tenantId (tenant-level config)
   const { data: settings } = await admin
     .from("settings")
     .select("schoolYearStart, schoolYearEnd")
@@ -71,6 +57,8 @@ export async function POST() {
       .eq("status", "scheduled");
 
     const sessionObjects = dates.map((s) => ({
+      id: crypto.randomUUID(),
+      tenantId,
       groupId: group.id,
       sessionDate: s.date,
       startTime: s.startTime,

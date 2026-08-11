@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { updateGroup } from "@/server/actions/groups";
 import type { ActionResult } from "@/server/actions/students";
@@ -85,9 +86,9 @@ export function GroupEditDialog({ group, subjects, rooms }: { group: GroupData; 
             <TeacherSelect value={teacherId} onChange={setTeacherId} />
           </div>
 
-          {rooms && rooms.length > 0 && (
-            <div className="space-y-2">
-              <Label>{t("groups.room")}</Label>
+          <div className="space-y-2">
+            <Label>{t("groups.room")}</Label>
+            {rooms && rooms.length > 0 ? (
               <select value={roomId} onChange={(e) => setRoomId(e.target.value)}
                 className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm">
                 <option value="">{t("groups.room_none")}</option>
@@ -95,8 +96,15 @@ export function GroupEditDialog({ group, subjects, rooms }: { group: GroupData; 
                   <option key={r.id} value={r.id}>{r.name} ({r.code})</option>
                 ))}
               </select>
-            </div>
-          )}
+            ) : (
+              <div className="flex items-center justify-between gap-3 rounded-md border border-dashed border-border bg-muted/40 px-3 py-2.5 text-sm">
+                <span className="text-xs text-muted-foreground">{t("groups.no_rooms_hint")}</span>
+                <Link href="/rooms" className="shrink-0 text-xs font-medium text-primary hover:underline">
+                  {t("rooms_page.new_room")}
+                </Link>
+              </div>
+            )}
+          </div>
 
           {subjects.length > 0 && (
             <div className="space-y-2">

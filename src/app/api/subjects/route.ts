@@ -92,7 +92,7 @@ export async function PATCH(request: Request) {
   try {
     const { tenantId, supabase } = await getTenantContext();
     const body = await request.json();
-    const { id, name, color, code, sessionDuration, status, description } = body;
+    const { id, name, color, code, sessionDuration, description } = body;
 
     if (!id) {
       return NextResponse.json({ error: "Subject id is required" }, { status: 400 });
@@ -103,7 +103,6 @@ export async function PATCH(request: Request) {
     if (color !== undefined) updateData.color = color;
     if (code !== undefined) updateData.code = code;
     if (sessionDuration !== undefined) updateData.sessionDuration = sessionDuration;
-    if (status !== undefined) updateData.status = status;
     if (description !== undefined) updateData.description = description;
 
     const { data, error } = await supabase

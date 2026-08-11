@@ -9,6 +9,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { formatCurrency, formatDate, initials } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { StudentEditDialog } from "@/components/students/student-edit-dialog";
+import { CardDialog } from "@/components/students/card-dialog";
 import { getT, getInitialLocale } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
@@ -66,6 +67,7 @@ export default async function StudentDetailPage({
               </p>
             </div>
             <StudentEditDialog student={student} />
+            <CardDialog studentId={student.id} />
           </div>
         </div>
         <div className="text-right">
@@ -216,9 +218,7 @@ export default async function StudentDetailPage({
               <Info label={t("students.phone_label")} value={student.phone} />
               <Info label={t("students.email")} value={student.email} />
               <Info label={t("students.address")} value={student.address} />
-              <Info label={t("students.dob")} value={student.dateOfBirth ? formatDate(student.dateOfBirth) : null} />
               <Info label={t("students.notes")} value={student.notes} />
-              <Info label={t("payments.billing_type")} value={student.billingType === "monthly" ? t("payments.monthly") : t("groups.per_session")} />
             </CardContent>
           </Card>
         </TabsContent>

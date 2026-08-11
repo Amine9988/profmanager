@@ -9,12 +9,11 @@ export async function getTenantSettings() {
   const { tenantId, supabase, userId } = await getTenantContext();
   const { data: tenant } = await supabase.from("tenants").select("*").eq("id", tenantId).single();
 
-  // School year is saved to the `settings` table (by /api/settings),
-  // not the `tenants` table — fetch it separately
   const { data: settings } = await supabase
     .from("settings")
     .select("schoolYearStart, schoolYearEnd")
     .eq("userId", userId)
+    .eq("tenantId", tenantId)
     .maybeSingle();
 
   return {
@@ -30,18 +29,25 @@ export async function updateTenantSettings(formData: FormData): Promise<ActionRe
     const ctx = await requirePermission("settings.update");
 
     const name = formData.get("name") as string;
-    const timezone = formData.get("timezone") as string;
     const schoolYearStart = formData.get("schoolYearStart") as string;
     const schoolYearEnd = formData.get("schoolYearEnd") as string;
+    const schoolPhone = formData.get("schoolPhone") as string;
+    const schoolLogo = formData.get("schoolLogo") as string;
 
-    const updateData: Record<string, unknown> = { name, timezone };
-    if (schoolYearStart) updateData.schoolYearStart = schoolYearStart;
-    if (schoolYearEnd) updateData.schoolYearEnd = schoolYearEnd;
+    const tenantData: Record<string, unknown> = {
+      id: ctx.tenantId,
+      name,
+      slug: ctx.tenantId,
+      updatedAt: new Date().toISOString(),
+    };
+    if (schoolYearStart) tenantData.schoolYearStart = schoolYearStart;
+    if (schoolYearEnd) tenantData.schoolYearEnd = schoolYearEnd;
+    if (schoolPhone) tenantData.schoolPhone = schoolPhone;
+    tenantData.schoolLogo = schoolLogo || null;
 
     const { error } = await ctx.supabase
       .from("tenants")
-      .update(updateData)
-      .eq("id", ctx.tenantId);
+      .upsert(tenantData, { onConflict: "id" });
 
     if (error) {
       return { error: error.message };

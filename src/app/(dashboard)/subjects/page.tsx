@@ -9,9 +9,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { BookOpen, Plus, Pencil, Trash2, Download, Search } from "lucide-react";
+import { BookOpen, Plus, Pencil, Trash2, Search } from "lucide-react";
 import { toast } from "sonner";
-import * as XLSX from "xlsx";
 
 interface Subject {
   id: string;
@@ -19,14 +18,13 @@ interface Subject {
   color: string;
   code: string | null;
   sessionDuration: number | null;
-  status: string;
   description: string | null;
   teacherCount: number;
   studentCount: number;
   createdAt: string;
 }
 
-function EmptyState({ onCreate }: { onCreate: () => void }) {
+function EmptyState() {
   const t = useT();
   return (
     <Card>
@@ -34,9 +32,6 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
         <BookOpen className="size-12 mb-4 opacity-40" />
         <p className="font-medium">{t("subjects_page.empty")}</p>
         <p className="text-sm mt-1">{t("subjects_page.empty_desc")}</p>
-        <Button size="sm" className="mt-4" onClick={onCreate}>
-          <Plus className="size-4 mr-2" /> {t("subjects_page.new_subject")}
-        </Button>
       </CardContent>
     </Card>
   );
@@ -55,11 +50,7 @@ function SubjectFormDialog({
   const isEditing = !!subject;
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(subject?.name || "");
-  const [code, setCode] = useState(subject?.code || "");
   const [color, setColor] = useState(subject?.color || "#6366f1");
-  const [sessionDuration, setSessionDuration] = useState(String(subject?.sessionDuration ?? "60"));
-  const [status, setStatus] = useState(subject?.status || "active");
-  const [description, setDescription] = useState(subject?.description || "");
   const [saving, setSaving] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -69,11 +60,7 @@ function SubjectFormDialog({
     try {
       const payload = {
         name: name.trim(),
-        code: code.trim() || null,
         color,
-        sessionDuration: Number(sessionDuration) || 60,
-        status,
-        description: description.trim() || null,
       };
       const url = "/api/subjects";
       const res = await fetch(url, {
@@ -100,11 +87,7 @@ function SubjectFormDialog({
     setOpen(open);
     if (!open && !isEditing) {
       setName("");
-      setCode("");
       setColor("#6366f1");
-      setSessionDuration("60");
-      setStatus("active");
-      setDescription("");
     }
     if (!open) onClose?.();
   }
@@ -125,16 +108,6 @@ function SubjectFormDialog({
             <Label>{t("subjects_page.form.name")}</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("subjects_page.form.name_placeholder")} required />
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-2">
-              <Label>{t("subjects_page.form.code")}</Label>
-              <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder={t("subjects_page.form.code_placeholder")} />
-            </div>
-            <div className="space-y-2">
-              <Label>{t("subjects_page.form.duration")}</Label>
-              <Input type="number" min="0" value={sessionDuration} onChange={(e) => setSessionDuration(e.target.value)} placeholder={t("subjects_page.form.duration_placeholder")} />
-            </div>
-          </div>
           <div className="space-y-2">
             <Label>{t("subjects_page.form.color")}</Label>
             <div className="flex items-center gap-2">
@@ -146,18 +119,6 @@ function SubjectFormDialog({
               />
               <span className="text-xs text-muted-foreground">{color}</span>
             </div>
-          </div>
-          <div className="space-y-2">
-            <Label>{t("subjects_page.form.description")}</Label>
-            <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t("subjects_page.form.description_placeholder")} />
-          </div>
-          <div className="space-y-2">
-            <Label>{t("subjects_page.form.status")}</Label>
-            <select value={status} onChange={(e) => setStatus(e.target.value)}
-              className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm">
-              <option value="active">{t("subjects_page.status_active")}</option>
-              <option value="inactive">{t("subjects_page.status_inactive")}</option>
-            </select>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => { if (isEditing) onClose?.(); else setOpen(false); }}>
@@ -179,7 +140,6 @@ export default function SubjectsPage() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [filterStatus, setFilterStatus] = useState<"all" | "active" | "inactive">("all");
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
 
   async function fetchSubjects() {
@@ -194,8 +154,6 @@ export default function SubjectsPage() {
 
   const filtered = useMemo(() => {
     return subjects.filter((s) => {
-      if (filterStatus === "active" && s.status !== "active") return false;
-      if (filterStatus === "inactive" && s.status !== "inactive") return false;
       if (search) {
         const q = search.toLowerCase();
         const match =
@@ -206,7 +164,7 @@ export default function SubjectsPage() {
       }
       return true;
     });
-  }, [subjects, search, filterStatus]);
+  }, [subjects, search]);
 
   async function handleDelete(subject: Subject) {
     if (!window.confirm(t("subjects_page.delete_confirm"))) return;
@@ -223,21 +181,6 @@ export default function SubjectsPage() {
     }
   }
 
-  function handleExport() {
-    const rows = filtered.map((s) => ({
-      [t("subjects_page.table.subject")]: s.name,
-      [t("subjects_page.table.code")]: s.code || "—",
-      [t("subjects_page.table.duration")]: s.sessionDuration ? `${s.sessionDuration} min` : "—",
-      [t("subjects_page.table.teachers")]: s.teacherCount,
-      [t("subjects_page.table.students")]: s.studentCount,
-      [t("subjects_page.table.status")]: s.status === "active" ? t("subjects_page.status_active") : t("subjects_page.status_inactive"),
-    }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, t("subjects_page.title"));
-    XLSX.writeFile(wb, `${t("subjects_page.title")}.xlsx`);
-  }
-
   return (
     <div className="space-y-6 p-4 md:p-6" dir={direction}>
       {/* Toolbar */}
@@ -252,28 +195,8 @@ export default function SubjectsPage() {
               className="pl-8"
             />
           </div>
-          <div className="flex rounded-md border overflow-hidden">
-            {(["all", "active", "inactive"] as const).map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilterStatus(f)}
-                className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                  filterStatus === f
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-background text-muted-foreground hover:bg-accent"
-                }`}
-              >
-                {f === "all" ? t("subjects_page.filter_all") : f === "active" ? t("subjects_page.filter_active") : t("subjects_page.filter_inactive")}
-              </button>
-            ))}
-          </div>
         </div>
         <div className="flex items-center gap-2">
-          {filtered.length > 0 && (
-            <Button variant="outline" size="sm" onClick={handleExport}>
-              <Download className="size-4 mr-2" /> {t("subjects_page.export_button")}
-            </Button>
-          )}
           <SubjectFormDialog onSaved={fetchSubjects} />
         </div>
       </div>
@@ -282,7 +205,7 @@ export default function SubjectsPage() {
       {loading ? (
         <p className="text-center text-muted-foreground py-8">{t("common.loading")}</p>
       ) : subjects.length === 0 ? (
-        <EmptyState onCreate={() => {}} />
+        <EmptyState />
       ) : filtered.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center text-muted-foreground">{t("common.noResults")}</CardContent>
@@ -296,17 +219,13 @@ export default function SubjectsPage() {
               <col style={{ width: "10%" }} />
               <col style={{ width: "13%" }} />
               <col style={{ width: "13%" }} />
-              <col style={{ width: "10%" }} />
               <col style={{ width: "12%" }} />
             </colgroup>
             <thead>
               <tr className="bg-muted/50 border-b">
                 <th style={{ textAlign: align, padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("subjects_page.table.subject")}</th>
-                <th style={{ textAlign: align, padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("subjects_page.table.code")}</th>
-                <th style={{ textAlign: align, padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("subjects_page.table.duration")}</th>
                 <th style={{ textAlign: align, padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("subjects_page.table.teachers")}</th>
                 <th style={{ textAlign: align, padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("subjects_page.table.students")}</th>
-                <th style={{ textAlign: align, padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("subjects_page.table.status")}</th>
                 <th style={{ textAlign: "center", padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("subjects_page.table.actions")}</th>
               </tr>
             </thead>
@@ -323,27 +242,10 @@ export default function SubjectsPage() {
                     </div>
                   </td>
                   <td style={{ padding: "12px", textAlign: align, fontSize: "14px", color: "hsl(var(--foreground))" }}>
-                    {s.code || "—"}
-                  </td>
-                  <td style={{ padding: "12px", textAlign: align, fontSize: "14px", color: "hsl(var(--foreground))" }}>
-                    {s.sessionDuration ? `${s.sessionDuration} min` : "—"}
-                  </td>
-                  <td style={{ padding: "12px", textAlign: align, fontSize: "14px", color: "hsl(var(--foreground))" }}>
                     {s.teacherCount}
                   </td>
                   <td style={{ padding: "12px", textAlign: align, fontSize: "14px", color: "hsl(var(--foreground))" }}>
                     {s.studentCount}
-                  </td>
-                  <td style={{ padding: "12px", textAlign: align }}>
-                    <span
-                      className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium"
-                      style={{
-                        backgroundColor: s.status === "active" ? "rgb(220 252 231)" : "rgb(243 244 246)",
-                        color: s.status === "active" ? "rgb(22 101 52)" : "rgb(107 114 128)",
-                      }}
-                    >
-                      {s.status === "active" ? t("subjects_page.status_active") : t("subjects_page.status_inactive")}
-                    </span>
                   </td>
                   <td style={{ padding: "12px", textAlign: "center" }}>
                     <div className="flex items-center justify-center gap-1">

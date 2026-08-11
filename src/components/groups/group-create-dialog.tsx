@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState, startTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createGroup } from "@/server/actions/groups";
 import type { ActionResult } from "@/server/actions/students";
@@ -166,9 +167,9 @@ export function GroupCreateDialog({ subjects, rooms }: { subjects: Subject[]; ro
             <p className="text-xs text-muted-foreground">{t("groups.teacher_optional")}</p>
           </div>
 
-          {rooms && rooms.length > 0 && (
-            <div className="space-y-2">
-              <Label><DoorOpen className="size-3.5 inline mr-1" />{t("groups.room")}</Label>
+          <div className="space-y-2">
+            <Label><DoorOpen className="size-3.5 inline mr-1" />{t("groups.room")}</Label>
+            {rooms && rooms.length > 0 ? (
               <select value={roomId} onChange={(e) => setRoomId(e.target.value)}
                 className="flex h-9 w-full min-w-0 rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm transition-all duration-200 focus-visible:border-ring focus-visible:ring-ring/40 focus-visible:ring-[3px] focus-visible:shadow-md outline-none">
                 <option value="">{t("groups.room_none")}</option>
@@ -176,8 +177,15 @@ export function GroupCreateDialog({ subjects, rooms }: { subjects: Subject[]; ro
                   <option key={r.id} value={r.id}>{r.name} ({r.code})</option>
                 ))}
               </select>
-            </div>
-          )}
+            ) : (
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-muted/40 px-3 py-2.5 text-sm">
+                <span className="text-xs text-muted-foreground">{t("groups.no_rooms_hint")}</span>
+                <Link href="/rooms" className="shrink-0 text-xs font-medium text-primary hover:underline">
+                  {t("rooms_page.new_room")}
+                </Link>
+              </div>
+            )}
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">

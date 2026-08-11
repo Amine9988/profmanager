@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useT } from "@/lib/i18n";
+import { useT, useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,9 +24,15 @@ interface Level {
 
 export default function LevelsPage() {
   const t = useT();
+  const { direction } = useI18n();
+  const align = direction === "rtl" ? "right" : "left";
   const [levels, setLevels] = useState<Level[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showBatchEdit, setShowBatchEdit] = useState(false);
+  const [showBatchDelete, setShowBatchDelete] = useState(false);
+  const [showBatchArchive, setShowBatchArchive] = useState(false);
 
   async function loadLevels() {
     setLoading(true);
@@ -98,7 +104,7 @@ export default function LevelsPage() {
   }
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
+    <div className="space-y-6 p-4 md:p-6" dir={direction}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold">{t("levels.title")}</h1>
         <div className="flex items-center gap-2">
@@ -125,32 +131,112 @@ export default function LevelsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="rounded-lg border overflow-hidden">
-          <table className="min-w-full divide-y divide-border">
-            <thead className="bg-muted/50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">{t("levels.form_name_ar")}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">{t("levels.form_name_fr")}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">{t("levels.form_name_en")}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">{t("levels.form_cycle")}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">{t("common.status")}</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase">{t("common.actions")}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {levels.map((level) => (
-                <LevelRow key={level.id} level={level} onUpdated={loadLevels} />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          {selectedIds.size > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-4 py-2">
+              <span className="text-sm font-medium">{selectedIds.size} {t("levels.selected")}</span>
+              <div className="flex-1" />
+              <Button variant="outline" size="sm" onClick={() => setShowBatchEdit(true)}>
+                <Pencil className="size-4" /> {t("levels.batch_edit")}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setShowBatchArchive(true)}>
+                <Archive className="size-4" /> {t("levels.batch_archive")}
+              </Button>
+              <Button variant="destructive" size="sm" onClick={() => setShowBatchDelete(true)}>
+                <Trash2 className="size-4" /> {t("levels.batch_delete")}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+                {t("common.cancel")}
+              </Button>
+            </div>
+          )}
+
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: "840px" }}>
+              <colgroup>
+                <col style={{ width: "4%" }} />
+                <col style={{ width: "32%" }} />
+                <col style={{ width: "32%" }} />
+                <col style={{ width: "16%" }} />
+              </colgroup>
+              <thead>
+                <tr className="bg-muted/50 border-b">
+                  <th style={{ textAlign: "center", padding: "12px" }}>
+                    <input
+                      type="checkbox"
+                      className="size-4 accent-primary"
+                      checked={levels.length > 0 && levels.every((l) => selectedIds.has(l.id))}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedIds(new Set(levels.map((l) => l.id)));
+                        } else {
+                          setSelectedIds(new Set());
+                        }
+                      }}
+                    />
+                  </th>
+                  <th style={{ textAlign: align, padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("levels.form_name")}</th>
+                  <th style={{ textAlign: align, padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("levels.form_cycle")}</th>
+                  <th style={{ textAlign: "center", padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("common.actions")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {levels.map((level, i) => (
+                  <LevelRow
+                    key={level.id}
+                    level={level}
+                    onUpdated={loadLevels}
+                    zebra={i % 2 === 1}
+                    selected={selectedIds.has(level.id)}
+                    onSelect={(checked) => {
+                      const next = new Set(selectedIds);
+                      if (checked) next.add(level.id);
+                      else next.delete(level.id);
+                      setSelectedIds(next);
+                    }}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {showBatchEdit && (
+        <BatchEditDialog
+          ids={[...selectedIds]}
+          onClose={() => setShowBatchEdit(false)}
+          onSaved={() => { setShowBatchEdit(false); setSelectedIds(new Set()); loadLevels(); }}
+        />
+      )}
+      {showBatchArchive && (
+        <BatchArchiveDialog
+          ids={[...selectedIds]}
+          onClose={() => setShowBatchArchive(false)}
+          onSaved={() => { setShowBatchArchive(false); setSelectedIds(new Set()); loadLevels(); }}
+        />
+      )}
+      {showBatchDelete && (
+        <BatchDeleteDialog
+          ids={[...selectedIds]}
+          onClose={() => setShowBatchDelete(false)}
+          onDeleted={() => { setShowBatchDelete(false); setSelectedIds(new Set()); loadLevels(); }}
+        />
       )}
     </div>
   );
 }
 
-function LevelRow({ level, onUpdated }: { level: Level; onUpdated: () => void }) {
+function LevelRow({ level, onUpdated, zebra, selected, onSelect }: {
+  level: Level;
+  onUpdated: () => void;
+  zebra: boolean;
+  selected: boolean;
+  onSelect: (checked: boolean) => void;
+}) {
   const t = useT();
+  const { direction } = useI18n();
+  const align = direction === "rtl" ? "right" : "left";
   const [showEdit, setShowEdit] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const archived = level.status === "archived";
@@ -176,20 +262,21 @@ function LevelRow({ level, onUpdated }: { level: Level; onUpdated: () => void })
 
   return (
     <>
-      <tr className={`hover:bg-muted/30 ${archived ? "opacity-50" : ""}`}>
-        <td className="px-4 py-3 whitespace-nowrap text-sm font-medium">{level.nameAr}</td>
-        <td className="px-4 py-3 whitespace-nowrap text-sm">{level.nameFr}</td>
-        <td className="px-4 py-3 whitespace-nowrap text-sm">{level.nameEn}</td>
-        <td className="px-4 py-3 whitespace-nowrap text-sm text-muted-foreground">
+      <tr className={`border-b ${zebra ? "bg-muted/20" : "bg-background"} ${archived ? "opacity-50" : ""}`}>
+        <td style={{ padding: "12px", textAlign: "center" }}>
+          <input
+            type="checkbox"
+            className="size-4 accent-primary"
+            checked={selected}
+            onChange={(e) => onSelect(e.target.checked)}
+          />
+        </td>
+        <td style={{ padding: "12px", textAlign: align, fontWeight: 600, fontSize: "14px", color: "hsl(var(--foreground))" }}>{level.nameAr}</td>
+        <td style={{ padding: "12px", textAlign: align, fontSize: "14px", color: "hsl(var(--muted-foreground))" }}>
           {t(`levels.cycle_${level.cycle}`)}
         </td>
-        <td className="px-4 py-3 whitespace-nowrap text-sm">
-          <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${archived ? "bg-muted text-muted-foreground" : "bg-green-100 text-green-700"}`}>
-            {archived ? t("levels.status_archived") : t("levels.status_active")}
-          </span>
-        </td>
-        <td className="px-4 py-3 whitespace-nowrap text-right">
-          <div className="flex items-center justify-end gap-1">
+        <td style={{ padding: "12px", textAlign: "center" }}>
+          <div className="flex items-center justify-center gap-1">
             <Button variant="ghost" size="icon" className="size-8" onClick={() => setShowEdit(true)}>
               <Pencil className="size-4" />
             </Button>
@@ -229,18 +316,16 @@ function LevelFormDialog({ level, onClose, onSaved, trigger }: {
   const t = useT();
   const isEditing = !!level;
   const [open, setOpen] = useState(false);
-  const [nameAr, setNameAr] = useState(level?.nameAr || "");
-  const [nameFr, setNameFr] = useState(level?.nameFr || "");
-  const [nameEn, setNameEn] = useState(level?.nameEn || "");
+  const [name, setName] = useState(level?.nameAr || "");
   const [cycle, setCycle] = useState(level?.cycle || "primary");
   const [saving, setSaving] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!nameAr.trim() || !nameFr.trim() || !nameEn.trim()) return;
+    if (!name.trim()) return;
     setSaving(true);
     try {
-      const payload = { nameAr: nameAr.trim(), nameFr: nameFr.trim(), nameEn: nameEn.trim(), cycle };
+      const payload = { nameAr: name.trim(), nameFr: name.trim(), nameEn: name.trim(), cycle };
       const url = "/api/levels";
       const res = await fetch(url, {
         method: isEditing ? "PATCH" : "POST",
@@ -250,7 +335,7 @@ function LevelFormDialog({ level, onClose, onSaved, trigger }: {
       if (res.ok) {
         toast.success(isEditing ? t("levels.updated") : t("levels.created"));
         if (!isEditing) {
-          setNameAr(""); setNameFr(""); setNameEn(""); setCycle("primary");
+          setName(""); setCycle("primary");
         }
         setOpen(false);
         onSaved();
@@ -282,16 +367,8 @@ function LevelFormDialog({ level, onClose, onSaved, trigger }: {
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label>{t("levels.form_name_ar")}</Label>
-            <Input value={nameAr} onChange={(e) => setNameAr(e.target.value)} required />
-          </div>
-          <div className="space-y-2">
-            <Label>{t("levels.form_name_fr")}</Label>
-            <Input value={nameFr} onChange={(e) => setNameFr(e.target.value)} required />
-          </div>
-          <div className="space-y-2">
-            <Label>{t("levels.form_name_en")}</Label>
-            <Input value={nameEn} onChange={(e) => setNameEn(e.target.value)} required />
+            <Label>{t("levels.form_name")}</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
           <div className="space-y-2">
             <Label>{t("levels.form_cycle")}</Label>
@@ -300,6 +377,8 @@ function LevelFormDialog({ level, onClose, onSaved, trigger }: {
               <option value="primary">{t("levels.cycle_primary")}</option>
               <option value="middle">{t("levels.cycle_middle")}</option>
               <option value="secondary">{t("levels.cycle_secondary")}</option>
+              <option value="formation">{t("levels.cycle_formation")}</option>
+              <option value="languages">{t("levels.cycle_languages")}</option>
             </select>
           </div>
           <DialogFooter>
@@ -346,14 +425,183 @@ function DeleteLevelDialog({ level, onClose, onDeleted }: {
         <p className="text-sm text-muted-foreground">{t("levels.delete_confirm")}</p>
         <div className="rounded-md border p-3 space-y-1 text-sm">
           <div className="flex justify-between">
-            <span className="text-muted-foreground">{t("levels.form_name_ar")}:</span>
+            <span className="text-muted-foreground">{t("levels.form_name")}:</span>
             <span>{level.nameAr}</span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">{t("levels.form_name_fr")}:</span>
-            <span>{level.nameFr}</span>
-          </div>
         </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button type="button" variant="destructive" onClick={handleDelete} disabled={deleting}>
+            {deleting ? t("common.deleting") : t("common.delete")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function BatchEditDialog({ ids, onClose, onSaved }: {
+  ids: string[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const t = useT();
+  const [name, setName] = useState("");
+  const [cycle, setCycle] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const updates: Record<string, unknown> = {};
+    if (name.trim()) {
+      updates.nameAr = name.trim();
+      updates.nameFr = name.trim();
+      updates.nameEn = name.trim();
+    }
+    if (cycle) updates.cycle = cycle;
+    if (Object.keys(updates).length === 0) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/levels/batch", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, updates }),
+      });
+      if (res.ok) {
+        toast.success(t("levels.updated"));
+        onSaved();
+      } else {
+        const err = await res.json();
+        toast.error(err.error || t("common.error"));
+      }
+    } catch { toast.error(t("common.error")); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("levels.batch_edit")}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <p className="text-sm text-muted-foreground">{t("levels.batch_edit_hint")}</p>
+          <div className="space-y-2">
+            <Label>{t("levels.form_name")}</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>{t("levels.form_cycle")}</Label>
+            <select value={cycle} onChange={(e) => setCycle(e.target.value)}
+              className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm">
+              <option value="">{t("levels.batch_keep")}</option>
+              <option value="primary">{t("levels.cycle_primary")}</option>
+              <option value="middle">{t("levels.cycle_middle")}</option>
+              <option value="secondary">{t("levels.cycle_secondary")}</option>
+              <option value="formation">{t("levels.cycle_formation")}</option>
+              <option value="languages">{t("levels.cycle_languages")}</option>
+            </select>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
+            <Button type="submit" disabled={saving}>{saving ? t("common.saving") : t("common.save")}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function BatchArchiveDialog({ ids, onClose, onSaved }: {
+  ids: string[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const t = useT();
+  const [saving, setSaving] = useState(false);
+  const [archiving, setArchiving] = useState(true);
+
+  async function handleSubmit() {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/levels/batch", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, updates: { status: archiving ? "archived" : "active" } }),
+      });
+      if (res.ok) {
+        toast.success(archiving ? t("levels.archived") : t("levels.activated"));
+        onSaved();
+      } else {
+        const err = await res.json();
+        toast.error(err.error || t("common.error"));
+      }
+    } catch { toast.error(t("common.error")); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{archiving ? t("levels.batch_archive") : t("levels.batch_activate")}</DialogTitle>
+        </DialogHeader>
+        <div className="flex gap-2">
+          <Button type="button" variant={archiving ? "default" : "outline"} onClick={() => setArchiving(true)} className="flex-1">
+            {t("levels.batch_archive")}
+          </Button>
+          <Button type="button" variant={!archiving ? "default" : "outline"} onClick={() => setArchiving(false)} className="flex-1">
+            {t("levels.batch_activate")}
+          </Button>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {archiving ? t("levels.batch_archive_confirm", { count: ids.length }) : t("levels.batch_activate_confirm", { count: ids.length })}
+        </p>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button type="button" onClick={handleSubmit} disabled={saving}>
+            {saving ? t("common.saving") : t("common.save")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function BatchDeleteDialog({ ids, onClose, onDeleted }: {
+  ids: string[];
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const t = useT();
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      const res = await fetch("/api/levels/batch", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (res.ok) {
+        toast.success(t("levels.deleted"));
+        onDeleted();
+      } else {
+        const err = await res.json();
+        toast.error(err.error || t("common.error"));
+      }
+    } catch { toast.error(t("common.error")); }
+    finally { setDeleting(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{t("levels.batch_delete")}</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">{t("levels.batch_delete_confirm", { count: ids.length })}</p>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
           <Button type="button" variant="destructive" onClick={handleDelete} disabled={deleting}>

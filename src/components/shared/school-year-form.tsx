@@ -18,23 +18,24 @@ export function SchoolYearForm({ initialSettings }: { initialSettings?: { school
 
   async function handleSave() {
     setSaving(true);
+    const fd = new FormData();
+    fd.set("name", "Établissement");
+    fd.set("schoolYearStart", schoolYearStart);
+    fd.set("schoolYearEnd", schoolYearEnd);
 
     const res = await fetch("/api/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        schoolYearStart,
-        schoolYearEnd,
-      }),
+      body: JSON.stringify({ schoolYearStart, schoolYearEnd }),
     });
-
-    const data = await res.json();
 
     if (res.ok) {
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
+      window.location.reload();
     } else {
-      alert("خطأ في الحفظ: " + data.error);
+      const data = await res.json();
+      alert("خطأ في الحفظ: " + (data?.error || "غير معروف"));
     }
     setSaving(false);
   }

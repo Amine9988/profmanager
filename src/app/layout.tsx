@@ -1,5 +1,6 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
+import { LanBaseProvider } from "@/components/lan-base-provider";
 import { getInitialLocale, getT, getDirection } from "@/lib/i18n";
 import type { Locale } from "@/lib/i18n";
 import "./globals.css";
@@ -23,7 +24,7 @@ export async function generateMetadata() {
       template: t("metadata.title_template"),
     },
     description: t("metadata.description"),
-    keywords: ["professeur", "cours particuliers", "gestion scolaire", "prÃ©sence", "paiements", "forfaits"],
+    keywords: ["professeur", "cours particuliers", "gestion scolaire", "présence", "paiements", "forfaits"],
     authors: [{ name: "ProfManager" }],
     openGraph: {
       type: "website",
@@ -33,8 +34,8 @@ export async function generateMetadata() {
       description: t("metadata.og_description"),
     },
     robots: {
-      index: true,
-      follow: true,
+      index: false,
+      follow: false,
     },
   };
 }
@@ -53,6 +54,7 @@ export default async function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        <LanBaseProvider />
         {children}
         <Toaster position="top-center" richColors />
       </body>

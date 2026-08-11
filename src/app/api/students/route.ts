@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabase
       .from("students")
-      .select("id, fullName, monthlyFee")
+      .select("id, fullName, monthlyFee, advanceBalance, status")
       .eq("tenantId", tenantId)
       .order("fullName", { ascending: true });
 

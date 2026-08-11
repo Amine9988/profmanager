@@ -1,44 +1,33 @@
 @echo off
 REM =============================================
-REM  ProfManager - Script de reconstruction
-REM  Utilisation : double-clic ou ligne de commande
+REM  ProfManager - Build complet (Next.js + Electron installer)
+REM  Usage: double-click or run from command line
+REM  Output: electron\dist\ProfManager Setup *.exe
 REM =============================================
+cd /d "%~dp0"
 echo.
-echo === ProfManager Desktop Builder ===
+echo === ProfManager - Build complet ===
 echo.
 
-cd /d "%~dp0electron"
-
-echo [1/3] Installation des dependances...
-call npm install
-if %errorlevel% neq 0 (
-  echo ERREUR : echec de l'installation des dependances.
-  pause
-  exit /b 1
-)
-
-echo [2/3] Construction de l'application...
-call npm run build:win
+echo [1/2] Construction Next.js + Electron...
+call npm run build:electron
 if %errorlevel% neq 0 (
   echo ERREUR : echec de la construction.
   pause
   exit /b 1
 )
 
-echo [3/3] Copie des fichiers vers le bureau...
-set desktop=%USERPROFILE%\Desktop\ProfManager-Desktop
-if not exist "%desktop%" mkdir "%desktop%"
-copy /Y "dist\ProfManager Setup 1.0.0.exe" "%desktop%\" >nul
-copy /Y "dist\ProfManager-Portable-1.0.0.exe" "%desktop%\" >nul
-copy /Y "dist\latest.yml" "%desktop%\" >nul
+echo [2/2] Verification du dossier de sortie...
+if exist "electron\dist\*.exe" (
+  echo.
+  echo === Construction terminee avec succes ! ===
+  echo.
+  dir /b "electron\dist\*.exe"
+  echo.
+  echo Les installateurs se trouvent dans : electron\dist\
+) else (
+  echo ATTENTION : Aucun installateur trouve dans electron\dist\
+)
 
-echo.
-echo === Construction terminee avec succes ! ===
-echo.
-echo Les fichiers se trouvent ici :
-echo   %desktop%
-echo.
-echo - ProfManager Setup 1.0.0.exe  (installateur)
-echo - ProfManager-Portable-1.0.0.exe (portable)
 echo.
 pause

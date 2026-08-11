@@ -26,7 +26,8 @@ export async function GET() {
       .select("id, name, color")
       .eq("tenantId", tenantId);
 
-    const subjectMap = new Map((allSubjects || []).map((s) => [s.id, s]));
+    const allSubjectsArr = (allSubjects || []) as { id: string; name: string; color: string }[];
+    const subjectMap = new Map(allSubjectsArr.map((s) => [s.id, s]));
     const linkMap = new Map<string, { id: string; name: string; color: string }[]>();
     for (const link of links || []) {
       if (!linkMap.has(link.teacherId)) linkMap.set(link.teacherId, []);
@@ -51,11 +52,15 @@ export async function POST(req: NextRequest) {
   try {
     const { tenantId, supabase } = await getTenantContext();
     const body = await req.json();
-    const { firstName, lastName, phone, email, salaryType, salaryAmount, subjectIds } = body;
+    const { firstName, lastName, fullName, phone, email, salaryType, salaryAmount, subjectIds } = body;
 
-    if (!firstName || !lastName) {
-      return NextResponse.json({ error: "First and last name are required" }, { status: 400 });
+    const rawName = (fullName || [firstName, lastName].filter(Boolean).join(" ") || "").trim();
+    if (!rawName) {
+      return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
+    const spaceIdx = rawName.indexOf(" ");
+    const firstNameVal = spaceIdx > -1 ? rawName.substring(0, spaceIdx) : rawName;
+    const lastNameVal = spaceIdx > -1 ? rawName.substring(spaceIdx + 1).trim() : "";
 
     const id = crypto.randomUUID();
     const { data: teacher, error } = await supabase
@@ -63,8 +68,8 @@ export async function POST(req: NextRequest) {
       .insert({
         id,
         tenantId,
-        firstName,
-        lastName,
+        firstName: firstNameVal,
+        lastName: lastNameVal,
         phone: phone || null,
         email: email || null,
         salaryType: salaryType || "fixed",
@@ -95,13 +100,21 @@ export async function PATCH(req: NextRequest) {
   try {
     const { tenantId, supabase } = await getTenantContext();
     const body = await req.json();
-    const { id, subjectIds, ...fields } = body;
+    const { id, subjectIds, fullName, ...fields } = body;
 
     if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
 
+    const updateFields: Record<string, any> = { ...fields };
+    if (fullName !== undefined) {
+      const rawName = fullName.trim();
+      const spaceIdx = rawName.indexOf(" ");
+      updateFields.firstName = spaceIdx > -1 ? rawName.substring(0, spaceIdx) : rawName;
+      updateFields.lastName = spaceIdx > -1 ? rawName.substring(spaceIdx + 1).trim() : "";
+    }
+
     const { data: teacher, error } = await supabase
       .from("teachers")
-      .update({ ...fields, updatedAt: new Date().toISOString() })
+      .update({ ...updateFields, updatedAt: new Date().toISOString() })
       .eq("id", id)
       .eq("tenantId", tenantId)
       .select()

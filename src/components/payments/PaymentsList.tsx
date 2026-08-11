@@ -1,8 +1,9 @@
-"use client";
+﻿"use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useT } from "@/lib/i18n";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useT, useI18n } from "@/lib/i18n";
 import { formatCurrency } from "@/lib/utils";
+import { jsPDF } from "jspdf";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,8 +15,10 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Plus, RefreshCw, Trash2, FileText, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
+import html2canvas from "html2canvas-pro";
 import { toast } from "sonner";
+import Link from "next/link";
 
 function EditPaymentModal({
   payment,
@@ -63,14 +66,14 @@ function EditPaymentModal({
     }
   }
 
-  const remaining = payment.amountDue - amountPaid;
+  const remaining = Math.max(payment.amountDue - amountPaid, 0);
 
   return (
     <Dialog open onOpenChange={() => onClose()}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            {t("payments.edit_payment")} — {payment.student?.fullName}
+            {t("payments.edit_payment")} â€” {payment.student?.fullName}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
@@ -115,7 +118,8 @@ function EditPaymentModal({
 }
 
 interface Payment {
-  id: string;
+  id: string | null;
+  isVirtual?: boolean;
   studentId: string;
   month: string;
   amountDue: number;
@@ -134,7 +138,8 @@ interface Payment {
       studentId: string;
       groupId: string;
       status: string;
-      group: { id: string; name: string };
+      groups?: { id: string; name: string } | null;
+      group?: { id: string; name: string } | null;
     }>;
   };
 }
@@ -155,12 +160,18 @@ interface PaymentsListProps {
   onRefresh?: () => void;
 }
 
-function PaymentRecordDialog({ onRecorded }: { onRecorded: () => void }) {
+function PaymentRecordDialog({ onRecorded, defaultMonth }: { onRecorded: (month?: string) => void; defaultMonth?: string }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [students, setStudents] = useState<{ id: string; fullName: string; monthlyFee: number }[]>([]);
+  const [groups, setGroups] = useState<{ id: string; name: string; pricePerSession: number | null; priceType: string; students: { id: string; fullName: string }[] }[]>([]);
+  const [groupId, setGroupId] = useState("");
   const [studentId, setStudentId] = useState("");
-  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [month, setMonth] = useState(defaultMonth || new Date().toISOString().slice(0, 7));
+  const [paymentDate, setPaymentDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
@@ -168,14 +179,20 @@ function PaymentRecordDialog({ onRecorded }: { onRecorded: () => void }) {
 
   useEffect(() => {
     if (open) {
-      fetch("/api/students?status=active")
+      fetch("/api/groups?withStudents=true")
+        .then((r) => r.json())
+        .then((data) => setGroups(Array.isArray(data) ? data : []))
+        .catch(() => {});
+      fetch("/api/students")
         .then((r) => r.json())
         .then(setStudents)
         .catch(() => {});
       requestAnimationFrame(() => {
+        setGroupId("");
         setStudentId("");
         setAmount("");
         setNote("");
+        setMonth(defaultMonth || new Date().toISOString().slice(0, 7));
         setExistingPayment(null);
       });
     }
@@ -194,27 +211,29 @@ function PaymentRecordDialog({ onRecorded }: { onRecorded: () => void }) {
       .catch(() => setExistingPayment(null));
   }, [studentId, month]);
 
+  const selectedGroup = groups.find((g) => g.id === groupId);
+  const availableStudents = selectedGroup?.students || [];
   const selectedStudent = students.find((s) => s.id === studentId);
   const studentName = selectedStudent?.fullName || "";
-  const amountDue = existingPayment?.amountDue ?? selectedStudent?.monthlyFee ?? 0;
+  const amountDue = existingPayment?.amountDue ?? selectedGroup?.pricePerSession ?? 0;
   const alreadyPaid = existingPayment?.amountPaid ?? 0;
   const remaining = Math.max(amountDue - alreadyPaid, 0);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const amt = Number(amount);
-    if (!studentId || !month || !amt || amt <= 0) return;
+    if (!studentId || !groupId || !month || !amt || amt <= 0) return;
     setSaving(true);
     try {
       const res = await fetch("/api/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ studentId, month, amount: amt, note: note || undefined }),
+        body: JSON.stringify({ studentId, groupId, month, amount: amt, note: note || undefined, paymentDate }),
       });
       if (res.ok) {
         toast.success(t("payments.paymentRecorded"));
         setOpen(false);
-        onRecorded();
+        onRecorded(month);
       } else {
         const err = await res.json();
         toast.error(err.error || t("common.error"));
@@ -235,9 +254,34 @@ function PaymentRecordDialog({ onRecorded }: { onRecorded: () => void }) {
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{studentName ? `${t("payments.newPayment")} — ${studentName}` : t("payments.newPayment")}</DialogTitle>
+          <DialogTitle>{studentName ? `${t("payments.newPayment")} â€” ${studentName}` : t("payments.newPayment")}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="group">{t("payments.group")}</Label>
+            <select
+              id="group"
+              value={groupId}
+              onChange={(e) => {
+                const gid = e.target.value;
+                setGroupId(gid);
+                setStudentId("");
+                const g = groups.find((x) => x.id === gid);
+                if (g?.pricePerSession) setAmount(String(g.pricePerSession));
+                else setAmount("");
+              }}
+              required
+              className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="">{t("common.select")}</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                  {g.pricePerSession != null ? ` â€” ${formatCurrency(g.pricePerSession)}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="student">{t("payments.student")}</Label>
             <select
@@ -248,7 +292,7 @@ function PaymentRecordDialog({ onRecorded }: { onRecorded: () => void }) {
               className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             >
               <option value="">{t("common.select")}</option>
-              {students.map((s) => (
+              {availableStudents.map((s) => (
                 <option key={s.id} value={s.id}>{s.fullName}</option>
               ))}
             </select>
@@ -257,8 +301,25 @@ function PaymentRecordDialog({ onRecorded }: { onRecorded: () => void }) {
             <Label htmlFor="month">{t("payments.month")}</Label>
             <Input id="month" type="month" value={month} onChange={(e) => setMonth(e.target.value)} required />
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="paymentDate">{t("payments.payment_date")}</Label>
+            <div className="flex gap-2">
+              <Input id="paymentDate" type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} required className="flex-1" />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const d = new Date();
+                  setPaymentDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+                }}
+              >
+                {t("common.today")}
+              </Button>
+            </div>
+          </div>
 
-          {studentId && month && (
+          {groupId && studentId && month && (
             <div className="rounded-lg border bg-muted/30 p-4 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">{t("payments.amount_due")}</span>
@@ -301,12 +362,38 @@ function PaymentRecordDialog({ onRecorded }: { onRecorded: () => void }) {
 
 export default function PaymentsList({ year, month }: PaymentsListProps) {
   const t = useT();
+  const { direction } = useI18n();
+  const align = direction === "rtl" ? "right" : "left";
   const [payments, setPayments] = useState<Payment[]>([]);
   const [summary, setSummary] = useState<PaymentSummary>({
     totalDue: 0, totalPaid: 0, totalRemaining: 0,
     paidCount: 0, overdueCount: 0, pendingCount: 0, partialCount: 0,
   });
+  const [viewMonth, setViewMonth] = useState<string>(() => {
+    const d = new Date(year, month - 1, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  });
+  const currentMonthStr = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  })();
+
+  function changeMonth(delta: number) {
+    setViewMonth((prev) => {
+      const [y, m] = prev.split("-").map(Number);
+      const d = new Date(y, m - 1 + delta, 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    });
+  }
   const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  const filteredPayments = statusFilter === "all"
+    ? payments
+    : payments.filter((p) => p.status === statusFilter);
+
+  const monthOverdue = payments.filter((p) => p.status === "overdue" || p.status === "partial");
+  const monthOverdueTotal = monthOverdue.reduce((acc, p) => acc + Math.max(p.amountDue - p.amountPaid, 0), 0);
 
   function calcSummary(data: Payment[]): PaymentSummary {
     const s: PaymentSummary = {
@@ -316,7 +403,7 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
     for (const p of data) {
       s.totalDue += p.amountDue;
       s.totalPaid += p.amountPaid;
-      s.totalRemaining += p.amountDue - p.amountPaid;
+      s.totalRemaining += Math.max(p.amountDue - p.amountPaid, 0);
       if (p.status === "paid") s.paidCount++;
       else if (p.status === "overdue") s.overdueCount++;
       else if (p.status === "partial") s.partialCount++;
@@ -326,13 +413,28 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
   }
 
   const fetchPayments = useCallback(async () => {
-    const res = await fetch(`/api/payments?year=${year}&month=${month}`);
+    const y = Number(viewMonth.slice(0, 4));
+    const m = Number(viewMonth.slice(5, 7));
+    const res = await fetch(`/api/payments?year=${y}&month=${m}`);
     if (res.ok) {
-      const data: Payment[] = await res.json();
+      const data: Payment[] = (await res.json()).map((p: Payment) =>
+        p.status === "partial" ? { ...p, status: "overdue" } : p
+      );
       setPayments(data);
       setSummary(calcSummary(data));
     }
-  }, [year, month]);
+  }, [viewMonth]);
+
+  const handleRecorded = useCallback(
+    (recordedMonth?: string) => {
+      if (recordedMonth && recordedMonth !== viewMonth) {
+        setViewMonth(recordedMonth);
+      } else {
+        fetchPayments();
+      }
+    },
+    [fetchPayments, viewMonth]
+  );
 
   useEffect(() => {
     setLoading(true);
@@ -359,6 +461,105 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
   const [deletingPayment, setDeletingPayment] = useState<Payment | null>(null);
   const [bulkDeletingPayment, setBulkDeletingPayment] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [printing, setPrinting] = useState(false);
+  const [pdfViewerUrl, setPdfViewerUrl] = useState<string | null>(null);
+  const pdfViewerUrlRef = useRef<string | null>(null);
+
+  function buildInvoiceHtml(p: Payment, i: number): string {
+    const statusLabel = p.status === "paid" ? "مدفوع" : p.status === "partial" ? "جزئي" : p.status === "overdue" ? "متأخر" : "معلق";
+    const monthLabel = new Date(p.month).toLocaleDateString("ar-DZ", { year: "numeric", month: "long" });
+    const dateLabel = new Date().toLocaleDateString("ar-DZ");
+    const remaining = Math.max(p.amountDue - p.amountPaid, 0);
+    return `
+      <div id="inv-${i}" dir="rtl" style="width:350px;margin:0 auto 20px;padding:24px;font-family:'Segoe UI',Arial,sans-serif;background:#fff;direction:rtl;text-align:right;border:1px solid #e2e8f0;border-radius:8px;">
+        <h2 style="text-align:center;font-size:18px;font-weight:700;margin:0 0 8px;color:#1e293b;">فاتورة الدفع</h2>
+        <hr style="border:none;border-top:1px solid #cbd5e1;margin:0 0 16px;" />
+        <table style="width:100%;font-size:13px;border-collapse:collapse;">
+          <tr><td style="padding:3px 0;color:#475569;">الطالب:</td><td style="padding:3px 0;font-weight:600;text-align:left;">${p.student?.fullName || "—"}</td></tr>
+          <tr><td style="padding:3px 0;color:#475569;">الشهر:</td><td style="padding:3px 0;font-weight:600;text-align:left;">${monthLabel}</td></tr>
+          <tr><td style="padding:3px 0;color:#475569;">رقم الفاتورة:</td><td style="padding:3px 0;font-weight:600;text-align:left;">${p.receiptNumber || "—"}</td></tr>
+          <tr><td style="padding:3px 0;color:#475569;">التاريخ:</td><td style="padding:3px 0;font-weight:600;text-align:left;">${dateLabel}</td></tr>
+        </table>
+        <hr style="border:none;border-top:1px solid #cbd5e1;margin:12px 0;" />
+        <table style="width:100%;font-size:13px;border-collapse:collapse;">
+          <thead><tr style="background:#f1f5f9;"><th style="padding:6px 8px;text-align:right;">البيان</th><th style="padding:6px 8px;text-align:left;">المبلغ</th></tr></thead>
+          <tbody>
+            <tr><td style="padding:5px 8px;">المبلغ المستحق</td><td style="padding:5px 8px;text-align:left;">${formatCurrency(p.amountDue)}</td></tr>
+            <tr style="background:#f8fafc;"><td style="padding:5px 8px;">المبلغ المدفوع</td><td style="padding:5px 8px;text-align:left;">${formatCurrency(p.amountPaid)}</td></tr>
+            <tr><td style="padding:5px 8px;font-weight:600;">المبلغ المتبقي</td><td style="padding:5px 8px;text-align:left;font-weight:600;">${formatCurrency(remaining)}</td></tr>
+          </tbody>
+        </table>
+        <hr style="border:none;border-top:1px solid #cbd5e1;margin:12px 0;" />
+        <p style="font-size:14px;font-weight:700;margin:0;">الحالة: ${statusLabel}</p>
+        <hr style="border:none;border-top:1px solid #cbd5e1;margin:16px 0 8px;" />
+        <p style="text-align:center;font-size:11px;color:#64748b;margin:0;">شكراً لكم</p>
+      </div>
+    `;
+  }
+
+  async function handlePrintInvoice(p: Payment) {
+    setPrinting(true);
+    try {
+      // Render HTML to a hidden container
+      const container = document.createElement("div");
+      container.style.cssText = "position:fixed;left:-9999px;top:0;z-index:-1;";
+      container.innerHTML = buildInvoiceHtml(p, 0);
+      document.body.appendChild(container);
+      await new Promise((r) => setTimeout(r, 300));
+      const el = document.getElementById("inv-0");
+      if (!el) { toast.error("خطأ في إنشاء الفاتورة"); return; }
+      const canvas = await html2canvas(el, { scale: 3, backgroundColor: "#ffffff", useCORS: true, logging: false });
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a5" });
+      const imgData = canvas.toDataURL("image/png");
+      const ratio = pdf.internal.pageSize.getWidth() / canvas.width;
+      pdf.addImage(imgData, "PNG", 0, 0, pdf.internal.pageSize.getWidth(), canvas.height * ratio);
+      if (pdfViewerUrlRef.current) URL.revokeObjectURL(pdfViewerUrlRef.current);
+      const url = URL.createObjectURL(pdf.output("blob"));
+      pdfViewerUrlRef.current = url;
+      setPdfViewerUrl(url);
+    } catch (e) {
+      console.error("Invoice PDF error:", e);
+      toast.error("فشل إنشاء الفاتورة");
+    } finally {
+      const c = document.getElementById("inv-0")?.parentElement;
+      c?.remove();
+      setPrinting(false);
+    }
+  }
+
+  async function handlePrintSelectedInvoices() {
+    const selected = filteredPayments.filter((p) => selectedIds.has(p.studentId));
+    if (selected.length === 0) return;
+    setPrinting(true);
+    try {
+      const container = document.createElement("div");
+      container.style.cssText = "position:fixed;left:-9999px;top:0;z-index:-1;";
+      container.innerHTML = selected.map((p, i) => buildInvoiceHtml(p, i)).join("");
+      document.body.appendChild(container);
+      await new Promise((r) => setTimeout(r, 400));
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a5" });
+      for (let i = 0; i < selected.length; i++) {
+        if (i > 0) pdf.addPage();
+        const el = document.getElementById("inv-" + i);
+        if (!el) continue;
+        const canvas = await html2canvas(el, { scale: 3, backgroundColor: "#ffffff", useCORS: true, logging: false });
+        const imgData = canvas.toDataURL("image/png");
+        const ratio = pdf.internal.pageSize.getWidth() / canvas.width;
+        pdf.addImage(imgData, "PNG", 0, 0, pdf.internal.pageSize.getWidth(), canvas.height * ratio);
+      }
+      if (pdfViewerUrlRef.current) URL.revokeObjectURL(pdfViewerUrlRef.current);
+      const url = URL.createObjectURL(pdf.output("blob"));
+      pdfViewerUrlRef.current = url;
+      setPdfViewerUrl(url);
+      toast.success(`تم إنشاء ${selected.length} فاتورة`);
+    } catch (e) {
+      console.error("Bulk invoice PDF error:", e);
+      toast.error("فشل إنشاء الفواتير");
+    } finally {
+      document.getElementById("inv-0")?.parentElement?.remove();
+      setPrinting(false);
+    }
+  }
 
   async function generateInvoices() {
     setGenerating(true);
@@ -367,7 +568,7 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
       const data = await res.json();
       if (res.ok) {
         const msg = data.created > 0
-          ? t("dashboard.generate_invoices") + ` — ${data.created} ${t("payments.title").toLowerCase()}`
+          ? t("dashboard.generate_invoices") + ` â€” ${data.created} ${t("payments.title").toLowerCase()}`
           : t("common.noData");
         toast.success(msg);
         fetchPayments();
@@ -457,22 +658,23 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
   }
 
   function toggleSelectAll() {
-    if (selectedIds.size === payments.length) {
+    if (selectedIds.size === filteredPayments.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(payments.map((p) => p.id)));
+      setSelectedIds(new Set(filteredPayments.map((p) => p.studentId)));
     }
   }
 
   async function handleBulkDelete() {
-    const ids = Array.from(selectedIds);
-    if (ids.length === 0) return;
+    const studentIds = Array.from(selectedIds);
+    if (studentIds.length === 0) return;
     setBulkDeletingPayment(true);
     try {
+      const monthStr = `${year}-${String(month).padStart(2, "0")}-01`;
       const res = await fetch("/api/payments/bulk-delete", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids }),
+        body: JSON.stringify({ studentIds, month: monthStr }),
       });
       if (res.ok) {
         toast.success(t("payments.payment_deleted"));
@@ -494,6 +696,20 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
 
   return (
     <div>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" onClick={() => changeMonth(-1)} title={t("payments.prev_month")}>
+            {direction === "rtl" ? <ChevronRight className="size-4" /> : <ChevronLeft className="size-4" />}
+          </Button>
+          <Input type="month" value={viewMonth} onChange={(e) => e.target.value && setViewMonth(e.target.value)} className="w-44" aria-label={t("payments.month")} />
+          <Button variant="outline" size="icon" onClick={() => changeMonth(1)} title={t("payments.next_month")}>
+            {direction === "rtl" ? <ChevronLeft className="size-4" /> : <ChevronRight className="size-4" />}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setViewMonth(currentMonthStr)}>
+            {t("payments.current_month")}
+          </Button>
+        </div>
+      </div>
       <div className="flex items-center justify-between mb-6">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-1">
           <div className="bg-white rounded-lg shadow p-4">
@@ -511,16 +727,44 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
           <div className="bg-white rounded-lg shadow p-4">
             <p className="text-sm text-gray-500">{t("payments.status")}</p>
             <p className="text-lg font-semibold">
-              {summary.paidCount} {t("payments.paid")} {summary.overdueCount} {t("payments.overdue")}
+              {summary.paidCount} {t("payments.paid")} {summary.overdueCount} {t("payments.overdue")} {summary.pendingCount > 0 && `${summary.pendingCount} ${t("payments.pending")}`}
             </p>
           </div>
         </div>
         <div className="ml-4 shrink-0 flex gap-2">
-          <Button variant="outline" size="sm" onClick={generateInvoices} disabled={generating}>
-            <RefreshCw className={`size-4${generating ? " animate-spin" : ""}`} /> {t("dashboard.generate_invoices")}
-          </Button>
-          <PaymentRecordDialog onRecorded={fetchPayments} />
+          <PaymentRecordDialog onRecorded={handleRecorded} defaultMonth={viewMonth} />
         </div>
+      </div>
+
+      {monthOverdue.length > 0 && (
+        <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3 flex items-center justify-between gap-2">
+          <p className="text-sm text-red-800">
+            <AlertTriangle className="size-4 inline mr-1 -mt-0.5" />
+            {t("payments.overdue_aggregate", {
+              count: monthOverdue.length,
+              amount: formatCurrency(monthOverdueTotal),
+            })}
+          </p>
+          <Link href="/overdue" className="text-sm font-medium text-red-700 underline hover:text-red-900 whitespace-nowrap">
+            {t("dashboard.overdue_title")}
+          </Link>
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-2 mb-4">
+        {["all", "paid", "overdue", "pending"].map((s) => (
+          <button
+            key={s}
+            onClick={() => setStatusFilter(s)}
+            className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
+              statusFilter === s
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-white text-gray-600 border-gray-300 hover:bg-gray-100"
+            }`}
+          >
+            {s === "all" ? t("common.all") : statusLabels[s] || t(`payments.${s}`)}
+          </button>
+        ))}
       </div>
 
       {selectedIds.size > 0 && (
@@ -536,70 +780,89 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
           >
             <Trash2 className="size-4 mr-1" /> {t("payments.bulk_delete")}
           </Button>
+          <Button variant="default" size="sm" onClick={handlePrintSelectedInvoices} disabled={printing}>
+            <FileText className="size-4 mr-1" /> {t("payments.print_selected")}
+          </Button>
         </div>
       )}
 
-      {payments.length === 0 ? (
+      {filteredPayments.length === 0 ? (
         <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
           {t("payments.no_payments")}
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-10">
+        <div className="rounded-lg border overflow-x-auto">
+          <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: "1100px" }}>
+            <colgroup>
+              <col style={{ width: "4%" }} />
+              <col style={{ width: "14%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "11%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "9%" }} />
+              <col style={{ width: "auto" }} />
+            </colgroup>
+            <thead>
+              <tr className="bg-muted/50 border-b">
+                <th style={{ textAlign: "center", padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>
                   <input
                     type="checkbox"
-                    checked={payments.length > 0 && selectedIds.size === payments.length}
+                    checked={filteredPayments.length > 0 && selectedIds.size === filteredPayments.length}
                     onChange={toggleSelectAll}
                     className="size-4 rounded border-gray-300 cursor-pointer"
                   />
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("students.form.fullName")}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("common.group")}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("payments.month")}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("common.receipt")}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("payments.amount_due")}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("payments.amount_paid")}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("payments.remaining")}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("payments.status")}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{t("common.actions")}</th>
+                <th style={{ textAlign: align, padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("students.form.fullName")}</th>
+                <th style={{ textAlign: align, padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("common.group")}</th>
+                <th style={{ textAlign: align, padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("payments.month")}</th>
+                <th style={{ textAlign: align, padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("payments.amount_due")}</th>
+                <th style={{ textAlign: align, padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("payments.amount_paid")}</th>
+                <th style={{ textAlign: align, padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("payments.remaining")}</th>
+                <th style={{ textAlign: align, padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("payments.status")}</th>
+                <th style={{ textAlign: "center", padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("common.actions")}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
-              {payments.map((p) => {
-                const remaining = p.amountDue - p.amountPaid;
+            <tbody>
+              {filteredPayments.map((p, i) => {
+                const remaining = Math.max(p.amountDue - p.amountPaid, 0);
                 return (
-                  <tr key={p.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-4 whitespace-nowrap">
+                    <tr key={p.studentId} className={`border-b ${i % 2 === 0 ? "bg-background" : "bg-muted/20"}`}>
+                    <td style={{ padding: "12px", textAlign: "center" }}>
                       <input
                         type="checkbox"
-                        checked={selectedIds.has(p.id)}
-                        onChange={() => toggleSelect(p.id)}
+                        checked={selectedIds.has(p.studentId)}
+                        onChange={() => toggleSelect(p.studentId)}
                         className="size-4 rounded border-gray-300 cursor-pointer"
                       />
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap font-medium">{p.student?.fullName}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {p.student?.groupStudents?.map((gs) => gs.group?.name ?? "?").join(", ") || "—"}
+                    <td style={{ padding: "12px", textAlign: align, fontWeight: 600, fontSize: "14px", color: "hsl(var(--foreground))" }}>{p.student?.fullName}</td>
+                    <td style={{ padding: "12px", textAlign: align, fontSize: "14px", color: "hsl(var(--foreground))" }}>
+                      {p.student?.groupStudents?.map((gs) => gs.groups?.name || gs.group?.name || "—").join(", ") || "—"}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td style={{ padding: "12px", textAlign: align, fontSize: "14px", color: "hsl(var(--foreground))" }}>
                       {new Date(p.month).toLocaleDateString(undefined, { year: "numeric", month: "long" })}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-xs font-mono">
-                      {p.receiptNumber || "—"}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">{formatCurrency(p.amountDue)}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">{formatCurrency(p.amountPaid)}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">{formatCurrency(remaining)}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td style={{ padding: "12px", textAlign: align, fontSize: "14px", color: "hsl(var(--foreground))" }}>{formatCurrency(p.amountDue)}</td>
+                    <td style={{ padding: "12px", textAlign: align, fontSize: "14px", color: "hsl(var(--foreground))" }}>{formatCurrency(p.amountPaid)}</td>
+                    <td style={{ padding: "12px", textAlign: align, fontSize: "14px", color: "hsl(var(--foreground))" }}>{formatCurrency(remaining)}</td>
+                    <td style={{ padding: "12px", textAlign: align }}>
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[p.status] || ""}`}>
                         {statusLabels[p.status] || t(`payments.${p.status}`)}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td style={{ padding: "12px", textAlign: "center" }}>
                       <div className="flex gap-1.5">
+                        <button
+                          onClick={() => handlePrintInvoice(p)}
+                          disabled={printing}
+                          className="px-2.5 py-1.5 bg-purple-600 text-white text-xs rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors whitespace-nowrap"
+                          title="ÙØ§ØªÙˆØ±Ø©"
+                        >
+                          <FileText className="size-3.5" />
+                        </button>
                         <button
                           onClick={() => setEditingPayment(p)}
                           className="px-2.5 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap"
@@ -688,6 +951,22 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
               onClick={handleBulkDelete}
             >
               {t("payments.delete_confirm_yes")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!pdfViewerUrl} onOpenChange={(o) => { if (!o) { setPdfViewerUrl(null); if (pdfViewerUrlRef.current) { URL.revokeObjectURL(pdfViewerUrlRef.current); pdfViewerUrlRef.current = null; } } }}>
+        <DialogContent className="max-w-4xl h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>{t("payments.title")}</DialogTitle>
+          </DialogHeader>
+          {pdfViewerUrl && (
+            <iframe src={pdfViewerUrl} className="w-full flex-1 min-h-0 border-0 rounded" style={{ height: "calc(90vh - 120px)" }} />
+          )}
+          <DialogFooter className="shrink-0">
+            <Button variant="outline" onClick={() => { const a = document.createElement("a"); a.href = pdfViewerUrl!; a.download = "ÙÙˆØ§ØªÙŠØ±-" + new Date().toISOString().slice(0, 10) + ".pdf"; a.click(); }}>
+              <FileText className="size-4 ml-1" /> ØªØ­Ù…ÙŠÙ„ PDF
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -6,11 +6,12 @@ export const studentSchema = z.object({
   gradeLevel: z.string().optional().nullable(),
   schoolName: z.string().optional().nullable(),
   phone: z.string().optional().nullable(),
+  fatherPhone: z.string().optional().nullable(),
   email: z.string().email("Invalid email").optional().nullable().or(z.literal("")),
   address: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
-  monthlyFee: z.coerce.number().min(1, "Monthly fee is required"),
-  subscriptionStart: z.string().min(1, "Subscription start date is required"),
+  monthlyFee: z.coerce.number().min(0).default(0),
+  subscriptionStart: z.string().optional().nullable(),
   billingType: z.enum(["monthly", "per_session"]).default("monthly"),
 });
 

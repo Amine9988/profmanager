@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useT } from "@/lib/i18n";
+import { useT, useI18n } from "@/lib/i18n";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,11 +38,16 @@ interface CaisseData {
 
 export default function CaissePage() {
   const t = useT();
+  const { direction } = useI18n();
+  const align = direction === "rtl" ? "right" : "left";
   const [data, setData] = useState<CaisseData | null>(null);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<string>("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showBatchEdit, setShowBatchEdit] = useState(false);
+  const [showBatchDelete, setShowBatchDelete] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -58,7 +63,7 @@ export default function CaissePage() {
   useEffect(() => { loadData(); }, [loadData]);
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
+    <div className="space-y-6 p-4 md:p-6" dir={direction}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold">{t("caisse.title")}</h1>
         <div className="flex flex-wrap items-center gap-2">
@@ -126,6 +131,23 @@ export default function CaissePage() {
         </Button>
       </div>
 
+      {/* Selection toolbar */}
+      {selectedIds.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-4 py-2">
+          <span className="text-sm font-medium">{selectedIds.size} {t("caisse.selected")}</span>
+          <div className="flex-1" />
+          <Button variant="outline" size="sm" onClick={() => setShowBatchEdit(true)}>
+            <Pencil className="size-4" /> {t("caisse.batch_edit")}
+          </Button>
+          <Button variant="destructive" size="sm" onClick={() => setShowBatchDelete(true)}>
+            <Trash2 className="size-4" /> {t("caisse.batch_delete")}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+            {t("common.cancel")}
+          </Button>
+        </div>
+      )}
+
       {/* Movements Table */}
       {loading ? (
         <p className="text-center text-muted-foreground">{t("common.loading")}</p>
@@ -136,58 +158,156 @@ export default function CaissePage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="rounded-lg border overflow-x-auto">
-          <table className="min-w-full divide-y divide-border">
-            <thead className="bg-muted/50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">{t("common.date")}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">{t("common.type")}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">{t("payments.amount")}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">{t("common.category")}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">{t("common.payment_method")}</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase">{t("common.description")}</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase">{t("common.actions")}</th>
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: "960px" }}>
+            <colgroup>
+              <col style={{ width: "4%" }} />
+              <col style={{ width: "11%" }} />
+              <col style={{ width: "9%" }} />
+              <col style={{ width: "11%" }} />
+              <col style={{ width: "11%" }} />
+              <col style={{ width: "13%" }} />
+              <col style={{ width: "27%" }} />
+              <col style={{ width: "11%" }} />
+            </colgroup>
+            <thead>
+              <tr className="bg-muted/50 border-b">
+                <th style={{ textAlign: "center", padding: "12px" }}>
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-primary"
+                    checked={data.movements.length > 0 && data.movements.every((m) => selectedIds.has(m.id))}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedIds(new Set(data.movements.map((m) => m.id)));
+                      } else {
+                        setSelectedIds(new Set());
+                      }
+                    }}
+                  />
+                </th>
+                <th style={{ textAlign: align, padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("common.date")}</th>
+                <th style={{ textAlign: align, padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("common.type")}</th>
+                <th style={{ textAlign: align, padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("payments.amount")}</th>
+                <th style={{ textAlign: align, padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("common.category")}</th>
+                <th style={{ textAlign: align, padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("common.payment_method")}</th>
+                <th style={{ textAlign: align, padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("common.description")}</th>
+                <th style={{ textAlign: "center", padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("common.actions")}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
-              {data.movements.map((m) => (
-                <MovementRow key={m.id} movement={m} onUpdated={loadData} />
+            <tbody>
+              {data.movements.map((m, i) => (
+                <MovementRow
+                  key={m.id}
+                  movement={m}
+                  onUpdated={loadData}
+                  zebra={i % 2 === 1}
+                  selected={selectedIds.has(m.id)}
+                  onSelect={(checked) => {
+                    const next = new Set(selectedIds);
+                    if (checked) next.add(m.id);
+                    else next.delete(m.id);
+                    setSelectedIds(next);
+                  }}
+                />
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      {showBatchEdit && (
+        <BatchEditDialog
+          ids={[...selectedIds]}
+          onClose={() => setShowBatchEdit(false)}
+          onSaved={() => { setShowBatchEdit(false); setSelectedIds(new Set()); loadData(); }}
+        />
+      )}
+      {showBatchDelete && (
+        <BatchDeleteDialog
+          ids={[...selectedIds]}
+          onClose={() => setShowBatchDelete(false)}
+          onDeleted={() => { setShowBatchDelete(false); setSelectedIds(new Set()); loadData(); }}
+        />
+      )}
     </div>
   );
 }
 
-function MovementRow({ movement, onUpdated }: { movement: CashMovement; onUpdated: () => void }) {
+const CATEGORY_KEYS: Record<string, string> = {
+  Paiement: "caisse.category_payment",
+  Salaire: "caisse.category_salary",
+  Fournitures: "caisse.category_supplies",
+  general: "caisse.category_general",
+};
+
+const METHOD_KEYS: Record<string, string> = {
+  cash: "payments.cash",
+  cheque: "payments.cheque",
+  transfer: "payments.transfer",
+  card: "payments.card",
+};
+
+function translateDescription(t: (k: string) => string, desc: string | null): string {
+  if (!desc) return "—";
+  return desc
+    .replace(/^Paiement suppl\u00e9mentaire/, t("caisse.description_additional"))
+    .replace(/^Paiement/, t("caisse.description_payment"))
+    .replace(/^Annulation paiement/, t("caisse.description_cancellation"))
+    .replace(/^Salaire enseignant/, t("caisse.description_salary"));
+}
+
+function MovementRow({ movement, onUpdated, zebra, selected, onSelect }: {
+  movement: CashMovement;
+  onUpdated: () => void;
+  zebra: boolean;
+  selected: boolean;
+  onSelect: (checked: boolean) => void;
+}) {
   const t = useT();
+  const { direction } = useI18n();
+  const align = direction === "rtl" ? "right" : "left";
   const [showEdit, setShowEdit] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
 
+  const categoryLabel = CATEGORY_KEYS[movement.category]
+    ? t(CATEGORY_KEYS[movement.category])
+    : movement.category;
+  const methodLabel = METHOD_KEYS[movement.paymentMethod]
+    ? t(METHOD_KEYS[movement.paymentMethod])
+    : movement.paymentMethod;
+  const descriptionLabel = translateDescription(t, movement.description);
+
   return (
     <>
-      <tr className="hover:bg-muted/30">
-        <td className="px-4 py-3 whitespace-nowrap text-sm">
+      <tr className={`border-b ${zebra ? "bg-muted/20" : "bg-background"}`}>
+        <td style={{ padding: "12px", textAlign: "center" }}>
+          <input
+            type="checkbox"
+            className="size-4 accent-primary"
+            checked={selected}
+            onChange={(e) => onSelect(e.target.checked)}
+          />
+        </td>
+        <td style={{ padding: "12px", textAlign: align, fontWeight: 600, fontSize: "14px", color: "hsl(var(--foreground))" }}>
           {new Date(movement.date).toLocaleDateString()}
         </td>
-        <td className="px-4 py-3 whitespace-nowrap">
+        <td style={{ padding: "12px", textAlign: align }}>
           <span className={`inline-flex items-center gap-1 text-sm font-medium ${movement.type === "income" ? "text-green-600" : "text-red-600"}`}>
             {movement.type === "income" ? <ArrowUpRight className="size-3.5" /> : <ArrowDownRight className="size-3.5" />}
             {movement.type === "income" ? t("caisse.income") : t("caisse.expense")}
           </span>
         </td>
-        <td className="px-4 py-3 whitespace-nowrap text-sm font-medium">
-          <span className={movement.type === "income" ? "text-green-600" : "text-red-600"}>
+        <td style={{ padding: "12px", textAlign: align }}>
+          <span className={`text-sm font-medium ${movement.type === "income" ? "text-green-600" : "text-red-600"}`}>
             {movement.type === "income" ? "+" : "-"}{formatCurrency(movement.amount)}
           </span>
         </td>
-        <td className="px-4 py-3 whitespace-nowrap text-sm">{movement.category}</td>
-        <td className="px-4 py-3 whitespace-nowrap text-sm text-muted-foreground">{movement.paymentMethod}</td>
-        <td className="px-4 py-3 text-sm text-muted-foreground max-w-[200px] truncate">{movement.description || "—"}</td>
-        <td className="px-4 py-3 whitespace-nowrap text-right">
-          <div className="flex items-center justify-end gap-1">
+        <td style={{ padding: "12px", textAlign: align, fontSize: "14px", color: "hsl(var(--foreground))" }}>{categoryLabel}</td>
+        <td style={{ padding: "12px", textAlign: align, fontSize: "14px", color: "hsl(var(--muted-foreground))" }}>{methodLabel}</td>
+        <td style={{ padding: "12px", textAlign: align, fontSize: "14px", color: "hsl(var(--muted-foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{descriptionLabel}</td>
+        <td style={{ padding: "12px", textAlign: "center" }}>
+          <div className="flex items-center justify-center gap-1">
             <div className="relative group">
               <Button
                 variant="ghost"
@@ -508,6 +628,157 @@ function NewMovementDialog({ onCreated }: { onCreated: () => void }) {
             <Button type="submit" disabled={saving}>{saving ? t("common.saving") : t("common.save")}</Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function BatchEditDialog({ ids, onClose, onSaved }: {
+  ids: string[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const t = useT();
+  const [date, setDate] = useState("");
+  const [category, setCategory] = useState("");
+  const [description, setDescription] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [categories, setCategories] = useState<{ name: string; type: string }[]>([]);
+
+  useEffect(() => {
+    fetch("/api/caisse/categories")
+      .then((r) => r.json())
+      .then(setCategories)
+      .catch(() => {});
+  }, []);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const updates: Record<string, unknown> = {};
+    if (date) updates.date = date;
+    if (category) updates.category = category;
+    if (description.trim()) updates.description = description.trim();
+    if (paymentMethod) updates.paymentMethod = paymentMethod;
+    if (Object.keys(updates).length === 0) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/caisse/batch", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, updates }),
+      });
+      if (res.ok) {
+        toast.success(t("caisse.movement_updated"));
+        onSaved();
+      } else {
+        const err = await res.json();
+        toast.error(err.error || t("common.error"));
+      }
+    } catch {
+      toast.error(t("common.error"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("caisse.batch_edit")}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <p className="text-sm text-muted-foreground">{t("caisse.batch_edit_hint")}</p>
+          <div className="space-y-2">
+            <Label>{t("common.date")}</Label>
+            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>{t("common.category")}</Label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm"
+            >
+              <option value="">{t("caisse.batch_keep")}</option>
+              <option value="general">General</option>
+              {categories.map((c) => (
+                <option key={c.name} value={c.name}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <Label>{t("common.payment_method")}</Label>
+            <select
+              value={paymentMethod}
+              onChange={(e) => setPaymentMethod(e.target.value)}
+              className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm"
+            >
+              <option value="">{t("caisse.batch_keep")}</option>
+              <option value="cash">{t("payments.cash")}</option>
+              <option value="cheque">{t("payments.cheque")}</option>
+              <option value="transfer">{t("payments.transfer")}</option>
+              <option value="card">{t("payments.card")}</option>
+            </select>
+          </div>
+          <div className="space-y-2">
+            <Label>{t("common.description")}</Label>
+            <Input value={description} onChange={(e) => setDescription(e.target.value)} />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
+            <Button type="submit" disabled={saving}>{saving ? t("common.saving") : t("common.save")}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function BatchDeleteDialog({ ids, onClose, onDeleted }: {
+  ids: string[];
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const t = useT();
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      const res = await fetch("/api/caisse/batch", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (res.ok) {
+        toast.success(t("caisse.movement_deleted"));
+        onDeleted();
+      } else {
+        const err = await res.json();
+        toast.error(err.error || t("common.error"));
+      }
+    } catch {
+      toast.error(t("common.error"));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{t("caisse.batch_delete")}</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">{t("caisse.batch_delete_confirm", { count: ids.length })}</p>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button type="button" variant="destructive" onClick={handleDelete} disabled={deleting}>
+            {deleting ? t("common.deleting") : t("common.delete")}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

@@ -27,7 +27,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
         <div className="flex flex-1 flex-col overflow-hidden">
-          <Topbar userName={user?.fullName ?? ctx.email} tenantName={tenant?.name ?? ""} />
+          <Topbar userName={user?.fullName || ""} tenantName={tenant?.name ?? ""} />
           <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
             <PageShell>{children}</PageShell>
           </main>

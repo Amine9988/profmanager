@@ -11,12 +11,17 @@ import { generateGroupSessions } from "./sessions";
 import { checkRoomConflictsForSlots, checkRoomConflict } from "@/lib/room-conflict";
 
 export async function getRooms() {
-  const { supabase } = await getTenantContext();
-  const { data: roomsData } = await supabase
-    .from("rooms")
-    .select("id, name, code")
-    .order("name");
-  return toCamelArray(roomsData || []);
+  try {
+    const { supabase } = await getTenantContext();
+    const { data: roomsData } = await supabase
+      .from("rooms")
+      .select("id, name, code")
+      .order("name");
+    return toCamelArray(roomsData || []);
+  } catch (e) {
+    console.error("[getRooms] error:", e);
+    return [];
+  }
 }
 
 export async function getGroups() {
@@ -28,7 +33,7 @@ export async function getGroups() {
       .eq("tenantId", tenantId)
       .order("createdAt", { ascending: false });
 
-  return toCamelArray(groups || []).map((g: any) => ({
+  const groupsData = toCamelArray(groups || []).map((g: any) => ({
     ...g,
     subject: g.subjects,
     teacher: g.teachers,
@@ -37,36 +42,74 @@ export async function getGroups() {
     groupStudents: ((g.groupStudents || []) as any[]).filter((gs: any) => gs.status === "active"),
     scheduleSlots: g.scheduleSlots || [],
   }));
+  const missingTeacherIds = [...new Set(groupsData.filter((g: any) => !g.teacher && g.teacherId).map((g: any) => g.teacherId))] as string[];
+  if (missingTeacherIds.length > 0) {
+    const { supabase } = await getTenantContext();
+    const { data: teachers } = await supabase.from("teachers").select("id, firstName, lastName").in("id", missingTeacherIds);
+    const teacherMap = Object.fromEntries((teachers || []).map((t: any) => [t.id, t]));
+    for (const g of groupsData) {
+      if (!g.teacher && g.teacherId) g.teacher = teacherMap[g.teacherId] || null;
+    }
+  }
+  return groupsData;
 }
 
 export async function getGroup(groupId: string) {
-  const { tenantId, supabase } = await getTenantContext();
+  try {
+    const { tenantId, supabase } = await getTenantContext();
 
-  const { data: group } = await supabase
-    .from("groups")
-    .select("*, subjects(*), teachers(id, firstName, lastName), group_students(*, students(*)), schedule_slots(*), sessions(*)")
-    .eq("id", groupId)
-    .eq("tenantId", tenantId)
-    .single();
+    const { data: group, error: groupErr } = await supabase
+      .from("groups")
+      .select("*, subjects(*), teachers(id, firstName, lastName)")
+      .eq("id", groupId)
+      .eq("tenantId", tenantId)
+      .single();
 
-  if (!group) return null;
+    if (groupErr || !group) {
+      console.error("[getGroup] error:", JSON.stringify(groupErr));
+      return null;
+    }
 
-  const g = toCamelCase(group) as any;
-  return {
-    ...g,
-    subject: g.subjects,
-    teacher: g.teachers,
-    room: null,
-    groupStudents: ((g.groupStudents || []) as any[]).filter((gs: any) => gs.status === "active"),
-    scheduleSlots: g.scheduleSlots || [],
-    sessions: ((g.sessions || []) as any[]).sort((a: any, b: any) => new Date(b.sessionDate || b.sessionDate).getTime() - new Date(a.sessionDate || a.sessionDate).getTime()).slice(0, 10),
-  };
+    const [{ data: groupStudents }, { data: scheduleSlots }, { data: sessions }] = await Promise.all([
+      supabase.from("group_students").select("*, students(*)").eq("groupId", groupId),
+      supabase.from("schedule_slots").select("*").eq("tenantId", tenantId).eq("groupId", groupId),
+      supabase.from("sessions").select("*").eq("tenantId", tenantId).eq("groupId", groupId),
+    ]);
+
+    const g = toCamelCase(group) as any;
+    g.groupStudents = toCamelArray(groupStudents || []).filter((gs: any) => gs.status === "active");
+    g.scheduleSlots = toCamelArray(scheduleSlots || []);
+    g.sessions = toCamelArray(sessions || []).sort(
+      (a: any, b: any) => new Date(b.sessionDate).getTime() - new Date(a.sessionDate).getTime()
+    ).slice(0, 10);
+
+    let teacher = g.teachers;
+    if (!teacher && g.teacherId) {
+      const { data: t } = await supabase.from("teachers").select("id, firstName, lastName").eq("id", g.teacherId).maybeSingle();
+      teacher = t || null;
+    }
+
+    return {
+      ...g,
+      subject: g.subjects,
+      teacher,
+      room: null,
+    };
+  } catch (e) {
+    console.error("[getGroup] exception:", e);
+    return null;
+  }
 }
 
 export async function getSubjects() {
-  const { tenantId, supabase } = await getTenantContext();
-  const { data } = await supabase.from("subjects").select("*").eq("tenantId", tenantId).order("name");
-  return toCamelArray(data || []);
+  try {
+    const { tenantId, supabase } = await getTenantContext();
+    const { data } = await supabase.from("subjects").select("*").eq("tenantId", tenantId).order("name");
+    return toCamelArray(data || []);
+  } catch (e) {
+    console.error("[getSubjects] error:", e);
+    return [];
+  }
 }
 
 export async function createSubject(name: string, color = "#6366f1"): Promise<ActionResult> {
@@ -298,7 +341,14 @@ export async function enrollStudent(groupId: string, studentId: string): Promise
     if (existing) {
       await ctx.supabase.from("group_students").update({ status: "active" }).eq("id", existing.id);
     } else {
-      await ctx.supabase.from("group_students").insert({ id: randomUUID(), tenantId: ctx.tenantId, groupId: groupId, studentId: studentId });
+      await ctx.supabase.from("group_students").insert({
+        id: randomUUID(),
+        tenantId: ctx.tenantId,
+        groupId: groupId,
+        studentId: studentId,
+        status: "active",
+        enrolledAt: new Date().toISOString(),
+      });
     }
 
     await createAuditLog({
@@ -338,6 +388,18 @@ export async function deleteGroup(groupId: string): Promise<ActionResult> {
     const { data: group } = await ctx.supabase.from("groups").select("id").eq("id", groupId).eq("tenantId", ctx.tenantId).single();
     if (!group) return { error: t("errors.group_not_found") };
 
+    await ctx.supabase.from("group_students").delete().eq("groupId", groupId);
+    await ctx.supabase.from("schedule_slots").delete().eq("groupId", groupId);
+    const { data: sessions } = await ctx.supabase
+      .from("sessions")
+      .select("id")
+      .eq("groupId", groupId)
+      .eq("tenantId", ctx.tenantId);
+    const sessionIds = (sessions || []).map((s: any) => s.id);
+    if (sessionIds.length > 0) {
+      await ctx.supabase.from("attendances").delete().in("sessionId", sessionIds).eq("tenantId", ctx.tenantId);
+      await ctx.supabase.from("sessions").delete().in("id", sessionIds).eq("tenantId", ctx.tenantId);
+    }
     await ctx.supabase.from("groups").delete().eq("id", groupId);
 
     await createAuditLog({

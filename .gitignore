@@ -30,6 +30,30 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# generic logs / runtime scratch
+*.log
+*.out.log
+*_out.log
+*_err.log
+*-out.txt
+*-err.txt
+stdout.txt
+stderr.txt
+
+# session cookies (JWT) — never commit
+cookies*.txt
+
+# dev / test scratch files
+/test-*.js
+/test-*.mjs
+/test-*.ts
+/check-*.js
+/debug-*.js
+/resolve-*.js
+/setup-standalone-nm.js
+verify-overview.png
+/test-*.pdf
+
 # env files (can opt-in for committing if needed)
 .env*
 
@@ -49,7 +73,34 @@ next-env.d.ts
 /electron/node_modules/
 /electron/dist/
 /electron/package-lock.json
-/electron/standalone-server/.next/
+/electron/standalone-server/
+
+# local dev db / logs
+/profmanager.db
+*.log
+*_err.txt
+*_out.txt
+cookies*.txt
+
+# electron build scratch (keep only source in electron/)
+/electron/build/
+/electron/dist_old*/
+/electron/platform-tools/
+/electron/resolve-copy.mjs
+/start.bat
+/start-browser.cmd
+
+# misc scratch
+/profmanager/
+/certafica/
+/scripts/deploy-standalone.js
+/scripts/deploy-win.js
+/scripts/flatten-node-modules.mjs
+/scripts/materialize-deps.js
+/scripts/merge-standalone-nm.js
+/scripts/repair-packaged-node_modules.js
+/scripts/generate-icon.cjs
+/scripts/generate-icons.js
 
 electron/dist/*.exe
 *.exe

@@ -3,13 +3,17 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { archiveStudent, restoreStudent, deleteStudent } from "@/server/actions/students";
+import Link from "next/link";
 import { StudentEditDialog } from "@/components/students/student-edit-dialog";
+import { CardDialog } from "@/components/students/card-dialog";
 import { toast } from "sonner";
 import { useI18n } from "@/lib/i18n";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Archive, RotateCcw, Trash2, Search, X } from "lucide-react";
+import { Archive, RotateCcw, Trash2, Search, X, Printer } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { drawCardToCanvas } from "@/components/students/card-dialog";
+import { jsPDF } from "jspdf";
 
 type StudentRow = {
   id: string;
@@ -17,13 +21,12 @@ type StudentRow = {
   gradeLevel: string | null;
   schoolName: string | null;
   phone: string | null;
+  fatherPhone: string | null;
   email: string | null;
   address: string | null;
-  dateOfBirth: string | null;
   notes: string | null;
   monthlyFee: number;
   subscriptionStart: string | null;
-  billingType: string | null;
   status: string;
   groupStudents: { group: { name: string } }[];
 };
@@ -79,6 +82,47 @@ export function StudentsTable({ data }: { data: StudentRow[] }) {
     }
   }
 
+  async function handleBulkPrint() {
+    if (!selectedIds.length) return;
+    const ids = [...selectedIds];
+    const data = await Promise.all(
+      ids.map((id) => fetch(`/api/students/${id}/card`).then((r) => r.json()))
+    );
+    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const perPage = 10;
+    const cols = 2, rows = 5;
+    const slotW = 85, slotH = 55;
+    const topX = (210 - cols * slotW) / 2;
+    const topY = (297 - rows * slotH) / 2;
+
+    for (let i = 0; i < data.length; i++) {
+      if (i > 0 && i % perPage === 0) pdf.addPage();
+      const pageIdx = i % perPage;
+      const col = pageIdx % cols;
+      const row = Math.floor(pageIdx / cols);
+      const sx = topX + col * slotW;
+      const sy = topY + row * slotH;
+
+      const d = data[i] as any;
+      const canvas = document.createElement("canvas");
+      await drawCardToCanvas(canvas, d?.student, d?.tenant, ids[i]);
+      const imgData = canvas.toDataURL("image/png");
+      if (imgData && imgData !== "data:,") {
+        const cx = sx + (slotW - 85) / 2;
+        const cy = sy + (slotH - 55) / 2;
+        pdf.addImage(imgData, "PNG", cx, cy, 85, 55);
+      }
+      pdf.setDrawColor(0);
+      pdf.setLineWidth(0.3);
+      pdf.rect(sx, sy, slotW, slotH);
+    }
+
+    const blob = pdf.output("blob");
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url, "_blank");
+    if (w) { w.focus(); setTimeout(() => { try { w.print(); } catch {} }, 2000); }
+  }
+
   async function handleDeleteOne(id: string) {
     if (!confirm(t("students.delete_confirm"))) return;
     const res = await deleteStudent(id);
@@ -109,18 +153,6 @@ export function StudentsTable({ data }: { data: StudentRow[] }) {
       toast.error(res.error ?? "Erreur");
     }
   }
-
-  const statusLabel = (s: string) => {
-    if (s === "active") return t("students.status_active");
-    if (s === "archived") return t("students.archived");
-    return t("students.status_inactive");
-  };
-
-  const billingLabel = (b: string | null) => {
-    if (b === "monthly") return t("payments.monthly");
-    return t("groups.per_session");
-  };
-
   return (
     <div className="w-full animate-fade-in" dir={direction}>
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
@@ -157,6 +189,9 @@ export function StudentsTable({ data }: { data: StudentRow[] }) {
           <span className="text-sm font-medium text-destructive">
             {t("students.selected_count", { count: selectedIds.length, total: filtered.length })}
           </span>
+          <Button size="sm" variant="default" onClick={handleBulkPrint}>
+            <Printer className="size-3.5 mr-1" />{t("students.bulk_print")}
+          </Button>
           <Button size="sm" variant="destructive" onClick={handleBulkDelete}>
             <Trash2 className="size-3.5 mr-1" />{t("students.bulk_delete")}
           </Button>
@@ -170,7 +205,7 @@ export function StudentsTable({ data }: { data: StudentRow[] }) {
         <div className="overflow-x-auto">
           <table className="w-full" style={{ minWidth: "750px" }}>
             <thead>
-              <tr className="border-b bg-muted/30">
+              <tr className="border-b bg-muted/50">
                 <th className="w-10 px-3 py-3 text-center">
                   <input
                     type="checkbox"
@@ -179,22 +214,16 @@ export function StudentsTable({ data }: { data: StudentRow[] }) {
                     className="size-4 rounded border-gray-300 text-primary focus:ring-primary/50 cursor-pointer"
                   />
                 </th>
-                <th className={cn("px-3 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-start", align === "right" ? "text-right" : "text-left")}>
+                <th className={cn("px-3 py-3 text-xs font-semibold uppercase tracking-wider text-foreground text-start", align === "right" ? "text-right" : "text-left")}>
                   {t("students.form.fullName")}
                 </th>
-                <th className={cn("px-3 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-start", align === "right" ? "text-right" : "text-left")}>
+                <th className={cn("px-3 py-3 text-xs font-semibold uppercase tracking-wider text-foreground text-start", align === "right" ? "text-right" : "text-left")}>
                   {t("common.level")}
                 </th>
-                <th className={cn("px-3 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-start", align === "right" ? "text-right" : "text-left")}>
+                <th className={cn("px-3 py-3 text-xs font-semibold uppercase tracking-wider text-foreground text-start", align === "right" ? "text-right" : "text-left")}>
                   {t("common.phone")}
                 </th>
-                <th className={cn("px-3 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-start", align === "right" ? "text-right" : "text-left")}>
-                  {t("payments.billing_type")}
-                </th>
-                <th className={cn("px-3 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-start", align === "right" ? "text-right" : "text-left")}>
-                  {t("common.status")}
-                </th>
-                <th className="px-3 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground text-center">
+                <th className="px-3 py-3 text-xs font-semibold uppercase tracking-wider text-foreground text-center">
                   {t("common.actions")}
                 </th>
               </tr>
@@ -202,7 +231,7 @@ export function StudentsTable({ data }: { data: StudentRow[] }) {
             <tbody>
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7}>
+                  <td colSpan={5}>
                     <div className="flex flex-col items-center gap-2 py-12 text-center">
                       <Search className="size-8 text-muted-foreground/30" />
                       <p className="text-sm text-muted-foreground">{t("students.noStudents")}</p>
@@ -227,35 +256,15 @@ export function StudentsTable({ data }: { data: StudentRow[] }) {
                     />
                   </td>
                   <td className={cn("px-3 py-3 text-sm font-medium", align === "right" ? "text-right" : "text-left")}>
-                    {student.fullName}
+                    <Link href={`/students/${student.id}`} className="hover:underline hover:text-primary transition-colors">
+                      {student.fullName}
+                    </Link>
                   </td>
                   <td className={cn("px-3 py-3 text-sm text-muted-foreground", align === "right" ? "text-right" : "text-left")}>
                     {student.gradeLevel || "—"}
                   </td>
                   <td className={cn("px-3 py-3 text-sm", align === "right" ? "text-right" : "text-left")} dir="ltr">
                     {student.phone || "—"}
-                  </td>
-                  <td className={cn("px-3 py-3", align === "right" ? "text-right" : "text-left")}>
-                    <span className={cn(
-                      "inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium",
-                      student.billingType === "monthly"
-                        ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
-                        : "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"
-                    )}>
-                      {billingLabel(student.billingType)}
-                    </span>
-                  </td>
-                  <td className={cn("px-3 py-3", align === "right" ? "text-right" : "text-left")}>
-                    <span className={cn(
-                      "inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium",
-                      student.status === "active"
-                        ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
-                        : student.status === "archived"
-                        ? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
-                        : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
-                    )}>
-                      {statusLabel(student.status)}
-                    </span>
                   </td>
                   <td className="px-3 py-3">
                     {student.status === "archived" ? (
@@ -273,15 +282,15 @@ export function StudentsTable({ data }: { data: StudentRow[] }) {
                             gradeLevel: student.gradeLevel,
                             schoolName: student.schoolName,
                             phone: student.phone,
+                            fatherPhone: student.fatherPhone,
                             email: student.email,
                             address: student.address,
-                            dateOfBirth: student.dateOfBirth ? new Date(student.dateOfBirth) : null,
                             notes: student.notes,
                             monthlyFee: student.monthlyFee,
                             subscriptionStart: student.subscriptionStart ? new Date(student.subscriptionStart) : null,
-                            billingType: student.billingType,
                           }}
                         />
+                        <CardDialog studentId={student.id} />
                         <Button variant="ghost" size="sm" onClick={() => handleArchive(student.id)} title={t("common.archive")}>
                           <Archive className="size-3.5 text-muted-foreground" />
                         </Button>
