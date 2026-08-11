@@ -50,13 +50,11 @@ export async function proxy(request: NextRequest) {
       }
     }
 
-    // If already logged in and visiting /login, go to overview
-    if (pathname === "/login" && hasSession && request.method === "GET") {
-      const url = request.nextUrl.clone();
-      url.pathname = "/overview";
-      url.search = "";
-      return NextResponse.redirect(url);
-    }
+    // Deliberately do NOT redirect /login -> /overview based on cookie presence:
+    // the cookie may be stale (Render ephemeral DB resets sessions), and bouncing
+    // to /overview where the server then redirects back to /login causes an
+    // infinite redirect loop. Redirects on /login only happen after a successful
+    // sign in/up (server action) or via a client-side validity check.
   }
 
   return response;

@@ -8,6 +8,7 @@ import {
   verifyPassword,
   createSession,
   deleteSession,
+  getSession,
   findUserByEmail,
   userExistsByEmail,
   seedTenantDefaults,
@@ -113,5 +114,9 @@ export async function logout() {
 export async function getSessionStatus() {
   const { cookies } = await import("next/headers");
   const store = await cookies();
-  return Boolean(store.get(SESSION_COOKIE)?.value);
+  const token = store.get(SESSION_COOKIE)?.value;
+  if (!token) return false;
+  const session = await getSession(token);
+  if (!session) return false;
+  return true;
 }

@@ -1,14 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useActionState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LanguageSwitcher } from "@/components/shared/language-switcher";
 import { useT, useI18n } from "@/lib/i18n";
-import { signIn, signUp } from "@/server/actions/auth";
+import { signIn, signUp, getSessionStatus } from "@/server/actions/auth";
 import { GraduationCap, AlertCircle, Sparkles } from "lucide-react";
 
 type AuthState = { error?: string };
@@ -16,7 +17,18 @@ type AuthState = { error?: string };
 export default function LoginPage() {
   const t = useT();
   const { locale } = useI18n();
+  const router = useRouter();
   const [mode, setMode] = useState<"login" | "signup">("login");
+
+  useEffect(() => {
+    let cancelled = false;
+    getSessionStatus().then((ok) => {
+      if (ok && !cancelled) router.replace("/overview");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   const action = mode === "login" ? signIn : signUp;
   const wrapped = async (_prev: AuthState, formData: FormData): Promise<AuthState> => {
