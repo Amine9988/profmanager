@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS tenants (
   schoolYearStart TEXT,
   schoolYearEnd TEXT,
   timezone TEXT,
+  trialStartsAt TEXT,
+  trialEndsAt TEXT,
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL
 );
@@ -14,8 +16,18 @@ CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   email TEXT,
   fullName TEXT,
+  passwordHash TEXT,
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  id TEXT PRIMARY KEY,
+  userId TEXT NOT NULL,
+  tenantId TEXT NOT NULL,
+  tokenHash TEXT NOT NULL,
+  createdAt TEXT NOT NULL,
+  expiresAt TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS roles (

@@ -6,16 +6,17 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { NotificationBell } from "@/components/shared/notification-bell";
 import { LanguageSwitcher } from "@/components/shared/language-switcher";
-import { Search } from "lucide-react";
+import { Search, LogOut } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { initials } from "@/lib/utils";
 import { useRef } from "react";
+import { logout } from "@/server/actions/auth";
 
 function openSearch() {
   window.dispatchEvent(new CustomEvent("open-search"));
 }
 
-export const Topbar = memo(function Topbar({ userName, tenantName }: { userName: string; tenantName: string }) {
+export const Topbar = memo(function Topbar({ userName, tenantName, showLogout = false }: { userName: string; tenantName: string; showLogout?: boolean }) {
   const t = useT();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -52,6 +53,13 @@ export const Topbar = memo(function Topbar({ userName, tenantName }: { userName:
         </Button>
         <LanguageSwitcher />
         <NotificationBell />
+        {showLogout && (
+          <form action={logout}>
+            <Button type="submit" variant="ghost" size="icon" title={t("auth.logout")}>
+              <LogOut className="size-4" />
+            </Button>
+          </form>
+        )}
         <div className="flex items-center gap-2 pl-2 border-l">
           <Avatar className="size-7">
             <AvatarFallback className="text-[11px]">{initials(userName)}</AvatarFallback>

@@ -984,7 +984,7 @@
     "no_account": "No account yet?",
     "free_trial": "Free trial",
     "signup_title": "Create your workspace",
-    "signup_desc": "14-day free trial, no credit card required",
+    "signup_desc": "3-day free trial, no credit card required",
     "tenant_name": "Activity name",
     "tenant_name_placeholder": "Ex: Ahmed Benani Tutoring",
     "full_name": "Your full name",
@@ -999,7 +999,14 @@
     "full_name_label": "Full name",
     "activity_label": "Activity name (e.g. Math tutoring)",
     "signup_error": "Error creating account",
-    "workspace_error": "Error creating your workspace"
+    "workspace_error": "Error creating your workspace",
+    "password_short": "Password must be at least 6 characters",
+    "email_exists": "An account already exists with this email",
+    "trial_banner": "Free trial (3 days)",
+    "trial_expired": "Your trial period has ended. Account is read-only.",
+    "days_left": "{days} day(s) left in your free trial",
+    "logout": "Log out",
+    "trial_info": "Includes a 3-day free trial"
   },
   "marketing": {
     "hero_title": "Manage your tutoring without the Excel headache",

@@ -175,6 +175,18 @@ export async function getDb(): Promise<SqlJsDatabase> {
   try { _db.exec("ALTER TABLE tenants ADD COLUMN schoolPhone TEXT"); } catch {}
   try { _db.exec("ALTER TABLE tenants ADD COLUMN schoolLogo TEXT"); } catch {}
   try { _db.exec("ALTER TABLE students ADD COLUMN fatherPhone TEXT"); } catch {}
+  try { _db.exec("ALTER TABLE users ADD COLUMN passwordHash TEXT"); } catch {}
+  try { _db.exec("ALTER TABLE tenants ADD COLUMN trialStartsAt TEXT"); } catch {}
+  try { _db.exec("ALTER TABLE tenants ADD COLUMN trialEndsAt TEXT"); } catch {}
+  _db.exec(`CREATE TABLE IF NOT EXISTS auth_sessions (
+    id TEXT PRIMARY KEY,
+    userId TEXT NOT NULL,
+    tenantId TEXT NOT NULL,
+    tokenHash TEXT NOT NULL,
+    createdAt TEXT NOT NULL,
+    expiresAt TEXT NOT NULL
+  )`);
+  _db.exec("CREATE INDEX IF NOT EXISTS idx_auth_sessions_tokenHash ON auth_sessions(tokenHash)");
   const tenantCount = (_db.exec(`SELECT count(*) FROM tenants`)?.[0]?.values?.[0]?.[0] as number) || 0;
   if (tenantCount === 0) {
     const nowIso = new Date().toISOString();
@@ -218,6 +230,13 @@ function prepare(db: SqlJsDatabase, sql: string): StmtWrapper {
 
 export function closeDb() {
   if (_db) { saveDb(); _db.close(); _db = null; }
+}
+
+export function persist() {
+  if (_db) {
+    _dirty = true;
+    saveDb();
+  }
 }
 
 function parseSelectColumns(selectStr: string): ParsedSelect {
@@ -275,7 +294,33 @@ function escapeIdent(name: string): string {
 }
 
 class LocalAuth {
+  private async resolveSessionUser() {
+    try {
+      const { cookies } = await import("next/headers");
+      const store = await cookies();
+      const token = store.get("pm_session")?.value;
+      if (!token) return null;
+      const crypto = await import("node:crypto");
+      const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+      if (!_db) return null;
+      const rows = _db.exec(`SELECT userId, expiresAt FROM auth_sessions WHERE tokenHash = '${tokenHash}'`);
+      if (rows.length === 0 || rows[0].values.length === 0) return null;
+      const v = rows[0].values[0];
+      if (new Date(String(v[1])).getTime() < Date.now()) return null;
+      const userRows = _db.exec(`SELECT id, email FROM users WHERE id = '${String(v[0])}'`);
+      if (userRows.length === 0 || userRows[0].values.length === 0) return null;
+      const uv = userRows[0].values[0];
+      return { id: String(uv[0]), email: uv[1] == null ? "" : String(uv[1]) };
+    } catch {
+      return null;
+    }
+  }
+
   async getUser() {
+    const sessionUser = await this.resolveSessionUser();
+    if (sessionUser) {
+      return { data: { user: sessionUser }, error: null };
+    }
     return {
       data: {
         user: {
@@ -300,6 +345,7 @@ class LocalAuth {
 class QueryBuilder implements PromiseLike<QueryResult> {
   private db!: SqlJsDatabase;
   private table: string;
+  private readonlyMode: boolean;
   private operation: "select" | "insert" | "update" | "delete" | "upsert" = "select";
   private columns: string = "*";
   private insertValues: Record<string, unknown> | Record<string, unknown>[] | null = null;
@@ -318,8 +364,9 @@ class QueryBuilder implements PromiseLike<QueryResult> {
   private aliasCounter = 0;
   private ready: Promise<void>;
 
-  constructor(table: string) {
+  constructor(table: string, readonlyMode = false) {
     this.table = table;
+    this.readonlyMode = readonlyMode;
     this.ready = getDb().then((db) => { this.db = db; });
   }
 
@@ -1055,6 +1102,9 @@ class QueryBuilder implements PromiseLike<QueryResult> {
   }
 
   private async execute(): Promise<QueryResult> {
+    if (this.readonlyMode && this.operation !== "select") {
+      return { data: null, error: { message: "Account is in read-only mode (trial expired). Contact support to renew.", code: "READ_ONLY", details: "", hint: "" } };
+    }
     switch (this.operation) {
       case "select": return this.executeSelect();
       case "insert": return this.executeInsert();
@@ -1066,10 +1116,10 @@ class QueryBuilder implements PromiseLike<QueryResult> {
   }
 }
 
-function createLocalClient() {
+function createLocalClient(options?: { readonly?: boolean }) {
   return {
     from(table: string) {
-      return new QueryBuilder(table);
+      return new QueryBuilder(table, options?.readonly ?? false);
     },
     auth: new LocalAuth(),
   };

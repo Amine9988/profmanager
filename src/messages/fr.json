@@ -984,7 +984,7 @@
     "no_account": "Pas encore de compte ?",
     "free_trial": "Essai gratuit",
     "signup_title": "Créer votre espace",
-    "signup_desc": "14 jours d'essai gratuit, sans carte bancaire",
+    "signup_desc": "3 jours d'essai gratuit, sans carte bancaire",
     "tenant_name": "Nom de votre activité",
     "tenant_name_placeholder": "Ex: Cours Ahmed Benani",
     "full_name": "Votre nom complet",
@@ -999,7 +999,14 @@
     "full_name_label": "Nom complet",
     "activity_label": "Nom de l'activité (ex: Cours de maths)",
     "signup_error": "Erreur lors de la création du compte",
-    "workspace_error": "Erreur lors de la création de votre espace"
+    "workspace_error": "Erreur lors de la création de votre espace",
+    "password_short": "Le mot de passe doit contenir au moins 6 caractères",
+    "email_exists": "Un compte existe déjà avec cet email",
+    "trial_banner": "Essai gratuit (3 jours)",
+    "trial_expired": "Votre période d'essai est terminée. Compte en lecture seule.",
+    "days_left": "{days} jour(s) restant(s) dans l'essai gratuit",
+    "logout": "Se déconnecter",
+    "trial_info": "3 jours d'essai gratuit inclus"
   },
   "marketing": {
     "hero_title": "Gérez vos cours particuliers sans le casse-tête Excel",
