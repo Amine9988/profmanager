@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Check, X, Clock, CheckCheck } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { toast } from "sonner";
-import { useT } from "@/lib/i18n";
+import { useT, useI18n } from "@/lib/i18n";
 
 type AttendanceStatus = "present" | "absent" | "late" | "excused";
 
@@ -25,6 +25,7 @@ export function AttendanceMarker({
   roster: RosterEntry[];
 }) {
   const t = useT();
+  const { direction } = useI18n();
   const [optimisticRoster, setOptimisticRoster] = useOptimistic(
     roster,
     (state, update: { studentId: string; status: AttendanceStatus }) =>
@@ -72,14 +73,14 @@ export function AttendanceMarker({
 
   if (optimisticRoster.length === 0) {
     return (
-      <p className="p-6 text-center text-sm text-muted-foreground">
+      <p className="p-6 text-center text-sm text-muted-foreground" dir={direction}>
         {t("attendance.no_students")}
       </p>
     );
   }
 
   return (
-    <div className="space-y-3" data-testid="attendance-marker">
+    <div className="space-y-3" data-testid="attendance-marker" dir={direction}>
       <Button onClick={handleMarkAll} variant="outline" className="w-full" size="lg">
         <CheckCheck className="size-5" /> {t("attendance.mark_all")}
       </Button>

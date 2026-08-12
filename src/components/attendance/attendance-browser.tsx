@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useT } from "@/lib/i18n";
+import { useT, useI18n } from "@/lib/i18n";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ChevronRight, CalendarCheck, Users } from "lucide-react";
@@ -45,6 +45,7 @@ export function AttendanceBrowser({
   roomById: Record<string, string>;
 }) {
   const t = useT();
+  const { direction } = useI18n();
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
 
   const sessionCountByGroup = useMemo(() => {
@@ -77,7 +78,7 @@ export function AttendanceBrowser({
   }, [selectedSessions]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" dir={direction}>
       <div>
         <h2 className="mb-3 text-sm font-semibold text-muted-foreground">
           {t("attendance.selectGroup")}

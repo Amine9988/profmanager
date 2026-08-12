@@ -1,11 +1,11 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { User, ClipboardCheck, ExternalLink } from "lucide-react";
+import { User, ClipboardCheck, FileText, DollarSign } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RecordPaymentDialog } from "@/components/payments/record-payment-dialog";
+import { StudentRecordDialog } from "@/components/students/student-record-dialog";
 import type { BarcodeSummary } from "@/server/actions/barcode";
 
 function formatCurrency(v: number) {
@@ -20,8 +20,6 @@ interface SummaryViewProps {
 }
 
 export function SummaryView({ summary, attView, attendanceLoading, onMarkAttendance }: SummaryViewProps) {
-  const router = useRouter();
-
   return (
     <>
       <Card>
@@ -90,15 +88,27 @@ export function SummaryView({ summary, attView, attendanceLoading, onMarkAttenda
       </Card>
 
       <div className="flex gap-2">
-        <Button
-          variant="default"
-          className="flex-1 h-11"
-          onClick={() => router.push(`/students/${summary.id}`)}
-        >
-          <ExternalLink className="size-4 ml-1" />
-          فتح الملف الكامل
-        </Button>
-        <RecordPaymentDialog studentId={summary.id} studentName={summary.fullName} />
+        <div className="flex-1">
+          <StudentRecordDialog
+            studentId={summary.id}
+            trigger={
+              <Button variant="default" className="w-full h-11">
+                <FileText className="size-4 ml-1" />
+                سجل التلميذ
+              </Button>
+            }
+          />
+        </div>
+        <RecordPaymentDialog
+          studentId={summary.id}
+          studentName={summary.fullName}
+          trigger={
+            <Button variant="outline" className="h-11">
+              <DollarSign className="size-4 ml-1" />
+              تسجيل دفعة
+            </Button>
+          }
+        />
       </div>
 
       {attView && (

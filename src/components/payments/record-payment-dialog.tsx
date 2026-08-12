@@ -23,9 +23,10 @@ interface Props {
   onRecorded?: () => void;
   variant?: "default" | "outline";
   size?: "default" | "sm";
+  trigger?: React.ReactNode;
 }
 
-export function RecordPaymentDialog({ studentId: preselectedId, studentName, onRecorded, variant = "default", size = "default" }: Props) {
+export function RecordPaymentDialog({ studentId: preselectedId, studentName, onRecorded, variant = "default", size = "default", trigger }: Props) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [students, setStudents] = useState<{ id: string; fullName: string; monthlyFee: number; advanceBalance: number }[]>([]);
@@ -137,9 +138,11 @@ export function RecordPaymentDialog({ studentId: preselectedId, studentName, onR
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant={variant} size={size}>
-          <DollarSign className="size-4" /> {t("payments.newPayment")}
-        </Button>
+        {trigger ?? (
+          <Button variant={variant} size={size}>
+            <DollarSign className="size-4" /> {t("payments.newPayment")}
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>

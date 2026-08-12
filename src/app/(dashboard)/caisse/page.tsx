@@ -10,7 +10,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
 } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
-import { Plus, ArrowUpRight, ArrowDownRight, Wallet, RefreshCw, Pencil, Trash2 } from "lucide-react";
+import { Plus, ArrowUpRight, ArrowDownRight, Wallet, RefreshCw, Pencil, Trash2, Lock, Eye, EyeOff, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 interface CashMovement {
@@ -43,31 +43,73 @@ export default function CaissePage() {
   const [data, setData] = useState<CaisseData | null>(null);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<string>("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [viewMonth, setViewMonth] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  });
+  const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBatchEdit, setShowBatchEdit] = useState(false);
   const [showBatchDelete, setShowBatchDelete] = useState(false);
+  const [revealed, setRevealed] = useState(false);
+  const [showPinDialog, setShowPinDialog] = useState(false);
+  const [pinValue, setPinValue] = useState("");
+  const [pinError, setPinError] = useState(false);
+
+  const ADMIN_PIN = "profmanager1234";
+
+  const handleReveal = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pinValue === ADMIN_PIN) {
+      setRevealed(true);
+      setPinValue("");
+      setPinError(false);
+      setShowPinDialog(false);
+    } else {
+      setPinError(true);
+    }
+  };
+
+    function changeMonth(delta: number) {
+    setViewMonth((prev) => {
+      const [y, m] = prev.split("-").map(Number);
+      const d = new Date(y, m - 1 + delta, 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    });
+  }
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    const [y, m] = viewMonth.split("-").map(Number);
+    const firstOfMonth = `${y}-${String(m).padStart(2, "0")}-01`;
+    const lastOfMonth = `${y}-${String(m).padStart(2, "0")}-${new Date(y, m, 0).getDate()}`;
     const params = new URLSearchParams();
     if (filterType) params.set("type", filterType);
-    if (dateFrom) params.set("from", dateFrom);
-    if (dateTo) params.set("to", dateTo);
+    params.set("from", firstOfMonth);
+    params.set("to", lastOfMonth);
     const res = await fetch(`/api/caisse?${params.toString()}`);
     if (res.ok) setData(await res.json());
     setLoading(false);
-  }, [filterType, dateFrom, dateTo]);
+  }, [filterType, viewMonth]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  const filteredMovements = (data?.movements ?? []).filter((m) => {
+    if (!search.trim()) return true;
+    const q = search.trim().toLowerCase();
+    const category = translateDescription(t, m.category) + " " + m.category;
+    const method = METHOD_KEYS[m.paymentMethod] ? t(METHOD_KEYS[m.paymentMethod]) : m.paymentMethod;
+    return [m.description, category, method, m.id]
+      .filter(Boolean)
+      .some((v) => v!.toLowerCase().includes(q));
+  });
 
   return (
     <div className="space-y-6 p-4 md:p-6" dir={direction}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold">{t("caisse.title")}</h1>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={loadData}>
+          <Button variant="outline" size="sm" onClick={() => { setRevealed(false); loadData(); }}>
             <RefreshCw className="size-4" />
           </Button>
           <NewMovementDialog onCreated={loadData} />
@@ -79,12 +121,21 @@ export default function CaissePage() {
         <CardContent className="p-6">
           <div className="flex items-center gap-3">
             <Wallet className="size-8 text-primary" />
-            <div>
+            <div className="flex-1">
               <p className="text-sm text-muted-foreground">{t("caisse.balance")}</p>
               <p className={`text-3xl font-bold ${(data?.balance ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
-                {formatCurrency(data?.balance ?? 0)}
+                {revealed ? formatCurrency(data?.balance ?? 0) : "••••••"}
               </p>
             </div>
+            {!revealed ? (
+              <Button variant="outline" size="sm" onClick={() => setShowPinDialog(true)}>
+                <Lock className="size-4" /> {t("caisse.reveal")}
+              </Button>
+            ) : (
+              <Button variant="outline" size="sm" onClick={() => setRevealed(false)}>
+                <EyeOff className="size-4" /> {t("caisse.hide")}
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -94,27 +145,63 @@ export default function CaissePage() {
         <Card>
           <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">{t("caisse.month_income")}</p>
-            <p className="text-xl font-bold text-green-600">{formatCurrency(data?.monthIncome ?? 0)}</p>
+            <p className="text-xl font-bold text-green-600">{revealed ? formatCurrency(data?.monthIncome ?? 0) : "••••••"}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">{t("caisse.month_expense")}</p>
-            <p className="text-xl font-bold text-red-600">{formatCurrency(data?.monthExpense ?? 0)}</p>
+            <p className="text-xl font-bold text-red-600">{revealed ? formatCurrency(data?.monthExpense ?? 0) : "••••••"}</p>
           </CardContent>
         </Card>
         <Card className="col-span-2 sm:col-span-1">
           <CardContent className="p-4">
             <p className="text-sm text-muted-foreground">{t("caisse.month_balance")}</p>
             <p className={`text-xl font-bold ${(data?.monthBalance ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
-              {formatCurrency(data?.monthBalance ?? 0)}
+              {revealed ? formatCurrency(data?.monthBalance ?? 0) : "••••••"}
             </p>
           </CardContent>
         </Card>
       </div>
 
+      {/* PIN Dialog */}
+      {showPinDialog && (
+        <Dialog open onOpenChange={setShowPinDialog}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>{t("caisse.pin_required")}</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleReveal} className="space-y-4">
+              <Input
+                type="password"
+                value={pinValue}
+                onChange={(e) => { setPinValue(e.target.value); setPinError(false); }}
+                autoFocus
+                autoComplete="off"
+              />
+              {pinError && <p className="text-sm text-destructive">{t("caisse.wrong_password")}</p>}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => { setShowPinDialog(false); setPinValue(""); setPinError(false); }}>
+                  {t("common.cancel")}
+                </Button>
+                <Button type="submit"><Eye className="size-4" /> {t("caisse.reveal")}</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* Filters */}
       <div className="flex flex-wrap gap-2 items-center">
+        <div className="relative">
+          <Search className="absolute start-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t("common.search")}
+            className="w-56 ps-8"
+          />
+        </div>
         <select
           value={filterType}
           onChange={(e) => setFilterType(e.target.value)}
@@ -124,11 +211,15 @@ export default function CaissePage() {
           <option value="income">{t("caisse.income")}</option>
           <option value="expense">{t("caisse.expense")}</option>
         </select>
-        <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-40" />
-        <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-40" />
-        <Button variant="outline" size="sm" onClick={() => { setFilterType(""); setDateFrom(""); setDateTo(""); }}>
-          {t("common.reset")}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" onClick={() => changeMonth(-1)} title={t("payments.prev_month")}>
+            {direction === "rtl" ? <ChevronRight className="size-4" /> : <ChevronLeft className="size-4" />}
+          </Button>
+          <Input type="month" value={viewMonth} onChange={(e) => e.target.value && setViewMonth(e.target.value)} className="w-44" aria-label={t("payments.month")} />
+          <Button variant="outline" size="icon" onClick={() => changeMonth(1)} title={t("payments.next_month")}>
+            {direction === "rtl" ? <ChevronLeft className="size-4" /> : <ChevronRight className="size-4" />}
+          </Button>
+        </div>
       </div>
 
       {/* Selection toolbar */}
@@ -151,7 +242,7 @@ export default function CaissePage() {
       {/* Movements Table */}
       {loading ? (
         <p className="text-center text-muted-foreground">{t("common.loading")}</p>
-      ) : !data?.movements.length ? (
+      ) : !filteredMovements.length ? (
         <Card>
           <CardContent className="p-8 text-center text-muted-foreground">
             {t("caisse.no_movements")}
@@ -176,10 +267,10 @@ export default function CaissePage() {
                   <input
                     type="checkbox"
                     className="size-4 accent-primary"
-                    checked={data.movements.length > 0 && data.movements.every((m) => selectedIds.has(m.id))}
+                    checked={filteredMovements.length > 0 && filteredMovements.every((m) => selectedIds.has(m.id))}
                     onChange={(e) => {
                       if (e.target.checked) {
-                        setSelectedIds(new Set(data.movements.map((m) => m.id)));
+                        setSelectedIds(new Set(filteredMovements.map((m) => m.id)));
                       } else {
                         setSelectedIds(new Set());
                       }
@@ -196,7 +287,7 @@ export default function CaissePage() {
               </tr>
             </thead>
             <tbody>
-              {data.movements.map((m, i) => (
+              {filteredMovements.map((m, i) => (
                 <MovementRow
                   key={m.id}
                   movement={m}

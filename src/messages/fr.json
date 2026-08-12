@@ -364,6 +364,11 @@
     "no_packages": "Aucun forfait",
     "balance_due": "Solde dû",
     "phone_label": "Téléphone",
+    "father_phone_label": "Téléphone du père",
+    "subscription_label": "Début d'abonnement",
+    "total_sessions": "Nombre de séances",
+    "attendance_rate": "Taux de présence",
+    "student_record": "Dossier de l'élève",
     "address": "Adresse",
     "dob": "Date de naissance",
     "notes": "Notes",
@@ -1159,7 +1164,11 @@
     "batch_delete": "Suppression groupée",
     "batch_edit_hint": "Remplissez uniquement les champs à modifier, laissez le reste vide.",
     "batch_keep": "(Garder actuel)",
-    "batch_delete_confirm": "Voulez-vous vraiment supprimer {count} mouvements ? Cette action est irréversible."
+    "batch_delete_confirm": "Voulez-vous vraiment supprimer {count} mouvements ? Cette action est irréversible.",
+    "reveal": "Afficher les montants",
+    "hide": "Masquer",
+    "pin_required": "Entrez le mot de passe",
+    "wrong_password": "Mot de passe incorrect"
   },
   "calendar": {
     "title": "Calendrier",

@@ -6,6 +6,7 @@ import { archiveStudent, restoreStudent, deleteStudent } from "@/server/actions/
 import Link from "next/link";
 import { StudentEditDialog } from "@/components/students/student-edit-dialog";
 import { CardDialog } from "@/components/students/card-dialog";
+import { StudentRecordDialog } from "@/components/students/student-record-dialog";
 import { toast } from "sonner";
 import { useI18n } from "@/lib/i18n";
 import { Input } from "@/components/ui/input";
@@ -291,6 +292,7 @@ export function StudentsTable({ data }: { data: StudentRow[] }) {
                           }}
                         />
                         <CardDialog studentId={student.id} />
+                        <StudentRecordDialog studentId={student.id} />
                         <Button variant="ghost" size="sm" onClick={() => handleArchive(student.id)} title={t("common.archive")}>
                           <Archive className="size-3.5 text-muted-foreground" />
                         </Button>

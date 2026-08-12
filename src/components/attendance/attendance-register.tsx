@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useT } from "@/lib/i18n";
+import { useT, useI18n } from "@/lib/i18n";
 import { getAttendanceRegister } from "@/server/actions/attendance";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -71,6 +71,7 @@ function timeRange(s: RegisterSession): string {
 
 export function AttendanceRegister({ groups }: { groups: RegisterGroup[] }) {
   const t = useT();
+  const { direction } = useI18n();
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sessions, setSessions] = useState<RegisterSession[]>([]);
@@ -102,7 +103,7 @@ export function AttendanceRegister({ groups }: { groups: RegisterGroup[] }) {
   const selectedStudent = students.find((s) => s.studentId === selectedStudentId) || null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" dir={direction}>
       <div>
         <h2 className="mb-3 text-sm font-semibold text-muted-foreground">
           {t("attendance.selectGroup")}

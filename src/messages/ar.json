@@ -339,6 +339,11 @@
     "search_filter": "ابحث عن طالب...",
     "no_groups": "لا يوجد",
     "phone_label": "الهاتف",
+    "father_phone_label": "هاتف الأب",
+    "subscription_label": "بداية الاشتراك",
+    "total_sessions": "إجمالي الحصص",
+    "attendance_rate": "نسبة الحضور",
+    "student_record": "سجل التلميذ",
     "address": "العنوان",
     "dob": "تاريخ الميلاد",
     "notes": "ملاحظات",
@@ -1159,7 +1164,11 @@
     "batch_delete": "حذف جماعي",
     "batch_edit_hint": "املأ الحقول التي تريد تغييرها فقط، واترك الباقي فارغاً.",
     "batch_keep": "(إبقاء الحالي)",
-    "batch_delete_confirm": "هل أنت متأكد من حذف {count} حركة؟ هذا الإجراء لا يمكن التراجع عنه."
+    "batch_delete_confirm": "هل أنت متأكد من حذف {count} حركة؟ هذا الإجراء لا يمكن التراجع عنه.",
+    "reveal": "إظهار المبالغ",
+    "hide": "إخفاء",
+    "pin_required": "أدخل كلمة المرور",
+    "wrong_password": "كلمة مرور غير صحيحة"
   },
   "calendar": {
     "title": "التقويم",

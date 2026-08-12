@@ -364,6 +364,11 @@
     "no_packages": "No packages",
     "balance_due": "Balance due",
     "phone_label": "Phone",
+    "father_phone_label": "Father's phone",
+    "subscription_label": "Subscription start",
+    "total_sessions": "Total sessions",
+    "attendance_rate": "Attendance rate",
+    "student_record": "Student record",
     "address": "Address",
     "dob": "Date of birth",
     "notes": "Notes",
@@ -1159,7 +1164,11 @@
     "batch_delete": "Batch delete",
     "batch_edit_hint": "Fill only the fields you want to change, leave the rest empty.",
     "batch_keep": "(Keep current)",
-    "batch_delete_confirm": "Are you sure you want to delete {count} movements? This action cannot be undone."
+    "batch_delete_confirm": "Are you sure you want to delete {count} movements? This action cannot be undone.",
+    "reveal": "Show amounts",
+    "hide": "Hide",
+    "pin_required": "Enter the password",
+    "wrong_password": "Incorrect password"
   },
   "calendar": {
     "title": "Calendar",

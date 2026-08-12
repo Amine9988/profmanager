@@ -6,9 +6,9 @@ import { AttendanceMarker } from "@/components/attendance/attendance-marker";
 import { CancelSessionButton } from "@/components/attendance/cancel-session-button";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import { formatDate } from "@/lib/utils";
-import { getT, getInitialLocale } from "@/lib/i18n";
+import { getT, getInitialLocale, getDirection, type Locale } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +20,7 @@ export default async function SessionAttendancePage({
   const { id } = await params;
   const locale = await getInitialLocale();
   const t = await getT(locale);
+  const direction = getDirection(locale as Locale);
   const [data, rooms] = await Promise.all([getSessionWithAttendance(id), getRooms()]);
 
   if (!data) { notFound(); return null; }
@@ -31,12 +32,12 @@ export default async function SessionAttendancePage({
   const isCancelled = (session as any).status === "cancelled";
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4 p-4 md:p-6">
+    <div className="mx-auto max-w-2xl space-y-4 p-4 md:p-6" dir={direction}>
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" asChild>
             <Link href="/attendance">
-              <ArrowLeft className="size-4" />
+              {direction === "rtl" ? <ArrowRight className="size-4" /> : <ArrowLeft className="size-4" />}
             </Link>
           </Button>
           <div>

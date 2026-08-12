@@ -287,7 +287,7 @@ export default function ScannerPage() {
                       آخر مسح: {lastRead}
                     </p>
                   ) : (
-                    <p className="text-xs text-muted-foreground">امسح البطاقة بالقارئ أو الهاتف الآن</p>
+                    <p className="text-xs text-muted-foreground">امسح البطاقة بالقارئ الآن</p>
                   )}
                   {keyEcho && (
                     <p dir="ltr" className="font-mono text-[11px] text-amber-600 break-all max-w-full px-4 border-t border-dashed pt-2">

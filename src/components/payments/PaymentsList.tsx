@@ -15,7 +15,7 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, RefreshCw, Trash2, FileText, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, RefreshCw, Trash2, FileText, AlertTriangle, ChevronLeft, ChevronRight, Lock, Eye, EyeOff, Search } from "lucide-react";
 import html2canvas from "html2canvas-pro";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -373,10 +373,6 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
     const d = new Date(year, month - 1, 1);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   });
-  const currentMonthStr = (() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  })();
 
   function changeMonth(delta: number) {
     setViewMonth((prev) => {
@@ -387,10 +383,40 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
   }
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [search, setSearch] = useState("");
+  const [revealed, setRevealed] = useState(false);
+  const [showPinDialog, setShowPinDialog] = useState(false);
+  const [pinValue, setPinValue] = useState("");
+  const [pinError, setPinError] = useState(false);
 
-  const filteredPayments = statusFilter === "all"
+  const ADMIN_PIN = "profmanager1234";
+
+  const handleReveal = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pinValue === ADMIN_PIN) {
+      setRevealed(true);
+      setPinValue("");
+      setPinError(false);
+      setShowPinDialog(false);
+    } else {
+      setPinError(true);
+    }
+  };
+
+  const filteredPayments = (statusFilter === "all"
     ? payments
-    : payments.filter((p) => p.status === statusFilter);
+    : payments.filter((p) => p.status === statusFilter)
+  ).filter((p) => {
+    if (!search.trim()) return true;
+    const q = search.trim().toLowerCase();
+    const groups = (p.student?.groupStudents ?? [])
+      .map((gs) => gs.groups?.name || gs.group?.name || "")
+      .join(" ");
+    const month = new Date(p.month).toLocaleDateString(undefined, { year: "numeric", month: "long" });
+    return [p.student?.fullName, groups, month, p.receiptNumber]
+      .filter(Boolean)
+      .some((v) => v!.toLowerCase().includes(q));
+  });
 
   const monthOverdue = payments.filter((p) => p.status === "overdue" || p.status === "partial");
   const monthOverdueTotal = monthOverdue.reduce((acc, p) => acc + Math.max(p.amountDue - p.amountPaid, 0), 0);
@@ -705,24 +731,21 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
           <Button variant="outline" size="icon" onClick={() => changeMonth(1)} title={t("payments.next_month")}>
             {direction === "rtl" ? <ChevronLeft className="size-4" /> : <ChevronRight className="size-4" />}
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setViewMonth(currentMonthStr)}>
-            {t("payments.current_month")}
-          </Button>
         </div>
       </div>
       <div className="flex items-center justify-between mb-6">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-1">
           <div className="bg-white rounded-lg shadow p-4">
             <p className="text-sm text-gray-500">{t("payments.total_due")}</p>
-            <p className="text-xl font-bold">{formatCurrency(summary.totalDue)}</p>
+            <p className="text-xl font-bold">{revealed ? formatCurrency(summary.totalDue) : "••••••"}</p>
           </div>
           <div className="bg-white rounded-lg shadow p-4">
             <p className="text-sm text-gray-500">{t("payments.total_paid")}</p>
-            <p className="text-xl font-bold text-green-600">{formatCurrency(summary.totalPaid)}</p>
+            <p className="text-xl font-bold text-green-600">{revealed ? formatCurrency(summary.totalPaid) : "••••••"}</p>
           </div>
           <div className="bg-white rounded-lg shadow p-4">
             <p className="text-sm text-gray-500">{t("payments.total_remaining")}</p>
-            <p className="text-xl font-bold text-red-600">{formatCurrency(summary.totalRemaining)}</p>
+            <p className="text-xl font-bold text-red-600">{revealed ? formatCurrency(summary.totalRemaining) : "••••••"}</p>
           </div>
           <div className="bg-white rounded-lg shadow p-4">
             <p className="text-sm text-gray-500">{t("payments.status")}</p>
@@ -731,10 +754,46 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
             </p>
           </div>
         </div>
-        <div className="ml-4 shrink-0 flex gap-2">
+        <div className="ml-4 shrink-0 flex flex-col items-stretch gap-2">
+          {!revealed ? (
+            <Button variant="outline" size="sm" onClick={() => setShowPinDialog(true)}>
+              <Lock className="size-4 mr-1" /> {t("caisse.reveal")}
+            </Button>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => setRevealed(false)}>
+              <EyeOff className="size-4 mr-1" /> {t("caisse.hide")}
+            </Button>
+          )}
           <PaymentRecordDialog onRecorded={handleRecorded} defaultMonth={viewMonth} />
         </div>
       </div>
+
+      {/* PIN Dialog */}
+      {showPinDialog && (
+        <Dialog open onOpenChange={setShowPinDialog}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>{t("caisse.pin_required")}</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleReveal} className="space-y-4">
+              <Input
+                type="password"
+                value={pinValue}
+                onChange={(e) => { setPinValue(e.target.value); setPinError(false); }}
+                autoFocus
+                autoComplete="off"
+              />
+              {pinError && <p className="text-sm text-destructive">{t("caisse.wrong_password")}</p>}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => { setShowPinDialog(false); setPinValue(""); setPinError(false); }}>
+                  {t("common.cancel")}
+                </Button>
+                <Button type="submit"><Eye className="size-4 mr-1" /> {t("caisse.reveal")}</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {monthOverdue.length > 0 && (
         <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3 flex items-center justify-between gap-2">
@@ -751,7 +810,16 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="relative">
+          <Search className="absolute start-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t("common.search")}
+            className="w-56 ps-8"
+          />
+        </div>
         {["all", "paid", "overdue", "pending"].map((s) => (
           <button
             key={s}
