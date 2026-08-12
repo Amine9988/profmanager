@@ -37,10 +37,6 @@ export function SummaryView({ summary, attView, attendanceLoading, onMarkAttenda
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 rounded-lg bg-muted/40">
-              <p className="text-[11px] text-muted-foreground">الاشتراك الشهري</p>
-              <p className="text-sm font-bold mt-0.5">{formatCurrency(summary.monthlyFee)}</p>
-            </div>
             <div className="p-3 rounded-lg bg-success/5">
               <p className="text-[11px] text-muted-foreground">المدفوع</p>
               <p className="text-sm font-bold text-success mt-0.5">{formatCurrency(summary.totalPaid)}</p>
@@ -48,10 +44,6 @@ export function SummaryView({ summary, attView, attendanceLoading, onMarkAttenda
             <div className="p-3 rounded-lg bg-destructive/5">
               <p className="text-[11px] text-muted-foreground">الديون</p>
               <p className="text-sm font-bold text-destructive mt-0.5">{formatCurrency(summary.currentDebt)}</p>
-            </div>
-            <div className="p-3 rounded-lg bg-primary/5">
-              <p className="text-[11px] text-muted-foreground">السلفة</p>
-              <p className="text-sm font-bold text-primary mt-0.5">{formatCurrency(summary.advanceBalance)}</p>
             </div>
           </div>
 

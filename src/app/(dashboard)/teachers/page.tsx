@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useT } from "@/lib/i18n";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,7 +10,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
 } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Trash2, DollarSign, Pencil, X } from "lucide-react";
+import { Plus, Trash2, DollarSign, Pencil, X, BookOpenCheck } from "lucide-react";
 import { toast } from "sonner";
 
 interface SubjectInfo {
@@ -28,6 +28,17 @@ interface Teacher {
   salaryType: string;
   salaryAmount: number;
   subjects: SubjectInfo[];
+}
+
+interface TeachingLogEntry {
+  id: string;
+  sessionDate: string;
+  startTime: string | null;
+  endTime: string | null;
+  status: string;
+  type: string;
+  groupName: string | null;
+  subjectName: string | null;
 }
 
 const SALARY_TYPES = [
@@ -182,6 +193,7 @@ function TeacherCard({ teacher, onUpdated }: { teacher: Teacher; onUpdated: () =
   const t = useT();
   const [showPayDialog, setShowPayDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showLogDialog, setShowLogDialog] = useState(false);
 
   async function handleDelete() {
     if (!window.confirm(t("common.confirmDelete"))) return;
@@ -210,6 +222,9 @@ function TeacherCard({ teacher, onUpdated }: { teacher: Teacher; onUpdated: () =
             </Button>
             <Button variant="outline" size="icon" className="size-8" onClick={() => setShowPayDialog(true)} title={t("teachers.pay")}>
               <DollarSign className="size-4" />
+            </Button>
+            <Button variant="outline" size="icon" className="size-8" onClick={() => setShowLogDialog(true)} title={t("teachers.teaching_log")}>
+              <BookOpenCheck className="size-4" />
             </Button>
             <Button variant="outline" size="icon" className="size-8" onClick={handleDelete}>
               <Trash2 className="size-4" />
@@ -245,6 +260,9 @@ function TeacherCard({ teacher, onUpdated }: { teacher: Teacher; onUpdated: () =
       )}
       {showPayDialog && (
         <PayTeacherDialog teacher={teacher} onClose={() => setShowPayDialog(false)} onPaid={onUpdated} />
+      )}
+      {showLogDialog && (
+        <TeachingLogDialog teacher={teacher} onClose={() => setShowLogDialog(false)} />
       )}
     </>
   );
@@ -447,6 +465,82 @@ function PayTeacherDialog({ teacher, onClose, onPaid }: { teacher: Teacher; onCl
             <Button type="submit" disabled={saving}>{saving ? t("common.saving") : t("common.save")}</Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function getSessionTypeLabel(type: string | null, t: (key: string) => string): string {
+  if (type === "extra") return t("groups.extra_session");
+  if (type === "makeup") return t("groups.makeup_session");
+  return t("groups.regular_session");
+}
+
+function TeachingLogDialog({ teacher, onClose }: { teacher: Teacher; onClose: () => void }) {
+  const t = useT();
+  const [entries, setEntries] = useState<TeachingLogEntry[] | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/teachers/${teacher.id}/teaching-log`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        setEntries(Array.isArray(data) ? data : data?.sessions || []);
+      })
+      .catch(() => {
+        if (!cancelled) setEntries([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [teacher.id]);
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{t("teachers.teaching_log")} — {teacher.firstName} {teacher.lastName}</DialogTitle>
+        </DialogHeader>
+
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">{t("teachers.taught_sessions")}</span>
+          <span className="font-medium">{entries ? entries.length : "—"}</span>
+        </div>
+
+        <div className="max-h-96 space-y-2 overflow-y-auto">
+          {loading ? (
+            <p className="p-6 text-center text-sm text-muted-foreground">{t("common.loading")}</p>
+          ) : !entries || entries.length === 0 ? (
+            <p className="p-6 text-center text-sm text-muted-foreground">{t("teachers.no_taught_sessions")}</p>
+          ) : (
+            entries.map((s) => (
+              <Card key={s.id}>
+                <CardContent className="flex flex-col gap-1 py-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium">{s.groupName || "—"}</span>
+                    <span className="text-xs text-muted-foreground">{formatDate(s.sessionDate)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 text-sm text-muted-foreground">
+                    <span>{s.subjectName || "—"}</span>
+                    <span>{s.startTime ?? ""}{s.endTime ? ` — ${s.endTime}` : ""}</span>
+                  </div>
+                  {s.type && s.type !== "regular" && (
+                    <span className="mt-1 inline-flex w-fit rounded-full bg-accent px-2 py-0.5 text-xs">
+                      {getSessionTypeLabel(s.type, t)}
+                    </span>
+                  )}
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

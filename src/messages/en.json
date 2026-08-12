@@ -518,6 +518,7 @@
     "makeup_session_created": "Makeup session created",
     "makeup_session_title": "Add makeup session",
     "add_makeup_session": "Add session",
+    "regular_session": "Regular",
     "no_rooms_hint": "No rooms available yet. Add a room first."
   },
   "attendance": {
@@ -1087,7 +1088,10 @@
     "edit": "Edit teacher",
     "edit_title": "Edit teacher",
     "no_subjects": "No subjects available. Create a subject first.",
-    "fullName": "Full name"
+    "fullName": "Full name",
+    "teaching_log": "Teaching Log",
+    "taught_sessions": "Taught sessions count",
+    "no_taught_sessions": "No taught sessions yet"
   },
   "levels": {
     "title": "Levels",

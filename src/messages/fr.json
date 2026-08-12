@@ -518,6 +518,7 @@
     "makeup_session_created": "Séance de rattrapage créée",
     "makeup_session_title": "Ajouter une séance de rattrapage",
     "add_makeup_session": "Ajouter la séance",
+    "regular_session": "Ordinaire",
     "no_rooms_hint": "Aucune salle disponible. Ajoutez une salle d'abord."
   },
   "attendance": {
@@ -1087,7 +1088,10 @@
     "edit": "Modifier l'enseignant",
     "edit_title": "Modifier l'enseignant",
     "no_subjects": "Aucune matière disponible. Créez une matière d'abord.",
-    "fullName": "Nom complet"
+    "fullName": "Nom complet",
+    "teaching_log": "Registre d'enseignement",
+    "taught_sessions": "Nombre de séances enseignées",
+    "no_taught_sessions": "Aucune séance enseignée pour le moment"
   },
   "levels": {
     "title": "Niveaux",

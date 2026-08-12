@@ -518,7 +518,8 @@
     "makeup_session": "حصة تعويضية",
     "makeup_session_created": "تم إنشاء الحصة التعويضية",
     "makeup_session_title": "إضافة حصة تعويضية",
-    "add_makeup_session": "إضافة الحصة"
+    "add_makeup_session": "إضافة الحصة",
+    "regular_session": "عادية"
   },
   "attendance": {
     "title": "الحضور",
@@ -1087,7 +1088,10 @@
     "edit": "تعديل بيانات الأستاذ",
     "edit_title": "تعديل الأستاذ",
     "no_subjects": "لا توجد مواد متاحة. قم بإنشاء مادة أولاً.",
-    "fullName": "الاسم"
+    "fullName": "الاسم",
+    "teaching_log": "سجل التدريس",
+    "taught_sessions": "عدد الحصص المدروسة",
+    "no_taught_sessions": "لا توجد حصص مدروسة بعد"
   },
   "levels": {
     "title": "المستويات",

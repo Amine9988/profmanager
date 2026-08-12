@@ -644,7 +644,18 @@ class QueryBuilder implements PromiseLike<QueryResult> {
     const grouped = new Map<string, Record<string, any>>();
 
     for (const row of rows) {
-      const pk = String(row[idKey]);
+      let pk: string;
+      if (row[idKey] === undefined || row[idKey] === null) {
+        const parts: string[] = [];
+        for (const [k, v] of Object.entries(row)) {
+          let isJoin = false;
+          for (const jk of allKeys) { if (k.startsWith(jk.prefix)) { isJoin = true; break; } }
+          if (!isJoin) parts.push(`${k}=${String(v)}`);
+        }
+        pk = "base|" + parts.join("&");
+      } else {
+        pk = String(row[idKey]);
+      }
       if (!pk) continue;
 
       if (!grouped.has(pk)) {
