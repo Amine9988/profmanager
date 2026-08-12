@@ -248,6 +248,15 @@ export default function ScannerPage() {
   }
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const demo = params.get("scan") || params.get("demo");
+    if (demo) {
+      const t = setTimeout(() => processScan(demo), 300);
+      return () => clearTimeout(t);
+    }
+  }, [processScan]);
+
+  useEffect(() => {
     const t1 = setTimeout(() => {
       window.focus();
       document.body.focus({ preventScroll: true });

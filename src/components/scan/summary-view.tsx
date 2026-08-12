@@ -54,7 +54,12 @@ export function SummaryView({ summary, attView, attendanceLoading, onMarkAttenda
             </div>
           )}
 
-          {summary.todaySessions.length > 0 && (
+          {summary.todaySessions.length === 0 ? (
+            <div className="mt-3 flex items-center gap-2 p-3 rounded-lg bg-muted/30 text-sm text-muted-foreground">
+              <ClipboardCheck className="size-4 shrink-0" />
+              لا توجد حصص اليوم
+            </div>
+          ) : (
             <div className="mt-3 space-y-2">
               <p className="text-xs font-semibold text-muted-foreground">حصة اليوم:</p>
               {summary.todaySessions.map((sess) => (
