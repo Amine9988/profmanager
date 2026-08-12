@@ -20,3 +20,9 @@ services:
         value: ProfManager
       - key: AUTH_MODE
         value: accounts
+      - key: DB_BACKUP_REPO
+        value: Amine9988/profmanager-db-backup
+      - key: DB_BACKUP_BRANCH
+        value: main
+      - key: DB_BACKUP_FILE
+        value: profmanager.db

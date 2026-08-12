@@ -2,6 +2,7 @@ import initSqlJs, { SqlJsStatic, Database as SqlJsDatabase } from "sql.js";
 import path from "path";
 import fs from "fs";
 import { SCHEMA_SQL, SEED_SQL, DEFAULT_TENANT_ID, DEFAULT_USER_ID } from "./schema";
+import { queueBackupPush, fetchBackup } from "./backup-store";
 
 interface Filter {
   column: string;
@@ -34,6 +35,7 @@ let _db: SqlJsDatabase | null = null;
 let _dbPath: string | null = null;
 let _dirty = false;
 let _lastLoadMtime = 0;
+let _backupState: "local" | "restored" | "absent" | "unknown" = "unknown";
 
 export function getDbPath(): string {
   if (_dbPath) return _dbPath;
@@ -52,6 +54,7 @@ function saveDb() {
     fs.writeFileSync(_dbPath, Buffer.from(data));
     _dirty = false;
     try { _lastLoadMtime = fs.statSync(_dbPath).mtimeMs; } catch {}
+    try { if (_backupState !== "unknown") queueBackupPush(data); } catch {}
   } catch {} /* fail silently */
 }
 
@@ -149,6 +152,21 @@ export async function getDb(): Promise<SqlJsDatabase> {
   }
   const dir = path.dirname(dbPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(dbPath)) {
+    try {
+      const remote = await fetchBackup();
+      if (remote && remote.length > 0) {
+        fs.writeFileSync(dbPath, Buffer.from(remote));
+        _backupState = "restored";
+      } else {
+        _backupState = "absent";
+      }
+    } catch {
+      _backupState = "unknown";
+    }
+  } else {
+    _backupState = "local";
+  }
   if (fs.existsSync(dbPath)) {
     const buf = fs.readFileSync(dbPath);
     _db = new _sql.Database(buf);
