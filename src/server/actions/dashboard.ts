@@ -3,6 +3,7 @@
 import { getTenantContext } from "@/lib/auth";
 import { getSchoolYearSettings } from "./sessions";
 import { checkAbsenceAlerts } from "./notifications";
+import { autoMarkAbsentForPastSessions } from "./attendance";
 import { isPaymentOverdue } from "@/lib/payments/overdue";
 
 const now = new Date();
@@ -34,6 +35,8 @@ export async function getSessionStatsDashboard() {
 
 export async function getDashboardKPIs() {
   const { tenantId, supabase } = await getTenantContext();
+
+  void autoMarkAbsentForPastSessions();
 
   const [
     { count: activeStudents },

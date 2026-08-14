@@ -9,7 +9,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
 } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
-import { Plus, Pencil, Trash2, Archive, RefreshCw, Layers } from "lucide-react";
+import { Plus, Pencil, Trash2, RefreshCw, Layers } from "lucide-react";
 import { toast } from "sonner";
 
 interface Level {
@@ -32,7 +32,6 @@ export default function LevelsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBatchEdit, setShowBatchEdit] = useState(false);
   const [showBatchDelete, setShowBatchDelete] = useState(false);
-  const [showBatchArchive, setShowBatchArchive] = useState(false);
 
   async function loadLevels() {
     setLoading(true);
@@ -139,9 +138,6 @@ export default function LevelsPage() {
               <Button variant="outline" size="sm" onClick={() => setShowBatchEdit(true)}>
                 <Pencil className="size-4" /> {t("levels.batch_edit")}
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setShowBatchArchive(true)}>
-                <Archive className="size-4" /> {t("levels.batch_archive")}
-              </Button>
               <Button variant="destructive" size="sm" onClick={() => setShowBatchDelete(true)}>
                 <Trash2 className="size-4" /> {t("levels.batch_delete")}
               </Button>
@@ -209,13 +205,6 @@ export default function LevelsPage() {
           onSaved={() => { setShowBatchEdit(false); setSelectedIds(new Set()); loadLevels(); }}
         />
       )}
-      {showBatchArchive && (
-        <BatchArchiveDialog
-          ids={[...selectedIds]}
-          onClose={() => setShowBatchArchive(false)}
-          onSaved={() => { setShowBatchArchive(false); setSelectedIds(new Set()); loadLevels(); }}
-        />
-      )}
       {showBatchDelete && (
         <BatchDeleteDialog
           ids={[...selectedIds]}
@@ -239,30 +228,10 @@ function LevelRow({ level, onUpdated, zebra, selected, onSelect }: {
   const align = direction === "rtl" ? "right" : "left";
   const [showEdit, setShowEdit] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
-  const archived = level.status === "archived";
-
-  async function handleToggleArchive() {
-    try {
-      const res = await fetch("/api/levels", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: level.id, status: archived ? "active" : "archived" }),
-      });
-      if (res.ok) {
-        toast.success(archived ? t("levels.activated") : t("levels.archived"));
-        onUpdated();
-      } else {
-        const err = await res.json();
-        toast.error(err.error || t("common.error"));
-      }
-    } catch {
-      toast.error(t("common.error"));
-    }
-  }
 
   return (
     <>
-      <tr className={`border-b ${zebra ? "bg-muted/20" : "bg-background"} ${archived ? "opacity-50" : ""}`}>
+      <tr className={`border-b ${zebra ? "bg-muted/20" : "bg-background"}`}>
         <td style={{ padding: "12px", textAlign: "center" }}>
           <input
             type="checkbox"
@@ -279,9 +248,6 @@ function LevelRow({ level, onUpdated, zebra, selected, onSelect }: {
           <div className="flex items-center justify-center gap-1">
             <Button variant="ghost" size="icon" className="size-8" onClick={() => setShowEdit(true)}>
               <Pencil className="size-4" />
-            </Button>
-            <Button variant="ghost" size="icon" className="size-8" onClick={handleToggleArchive}>
-              <Archive className="size-4" />
             </Button>
             <Button variant="ghost" size="icon" className="size-8 text-destructive hover:text-destructive" onClick={() => setShowDelete(true)}>
               <Trash2 className="size-4" />
@@ -507,62 +473,6 @@ function BatchEditDialog({ ids, onClose, onSaved }: {
             <Button type="submit" disabled={saving}>{saving ? t("common.saving") : t("common.save")}</Button>
           </DialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function BatchArchiveDialog({ ids, onClose, onSaved }: {
-  ids: string[];
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const t = useT();
-  const [saving, setSaving] = useState(false);
-  const [archiving, setArchiving] = useState(true);
-
-  async function handleSubmit() {
-    setSaving(true);
-    try {
-      const res = await fetch("/api/levels/batch", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids, updates: { status: archiving ? "archived" : "active" } }),
-      });
-      if (res.ok) {
-        toast.success(archiving ? t("levels.archived") : t("levels.activated"));
-        onSaved();
-      } else {
-        const err = await res.json();
-        toast.error(err.error || t("common.error"));
-      }
-    } catch { toast.error(t("common.error")); }
-    finally { setSaving(false); }
-  }
-
-  return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle>{archiving ? t("levels.batch_archive") : t("levels.batch_activate")}</DialogTitle>
-        </DialogHeader>
-        <div className="flex gap-2">
-          <Button type="button" variant={archiving ? "default" : "outline"} onClick={() => setArchiving(true)} className="flex-1">
-            {t("levels.batch_archive")}
-          </Button>
-          <Button type="button" variant={!archiving ? "default" : "outline"} onClick={() => setArchiving(false)} className="flex-1">
-            {t("levels.batch_activate")}
-          </Button>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          {archiving ? t("levels.batch_archive_confirm", { count: ids.length }) : t("levels.batch_activate_confirm", { count: ids.length })}
-        </p>
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
-          <Button type="button" onClick={handleSubmit} disabled={saving}>
-            {saving ? t("common.saving") : t("common.save")}
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

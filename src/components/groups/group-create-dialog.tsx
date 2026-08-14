@@ -17,57 +17,40 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, Clock, DoorOpen, Users, GraduationCap } from "lucide-react";
+import { Plus, DoorOpen, Users, GraduationCap, CalendarClock, X } from "lucide-react";
 import { toast } from "sonner";
 import { LevelSelect } from "@/components/shared/level-select";
 import { useT } from "@/lib/i18n";
 import { TeacherSelect } from "@/components/shared/teacher-select";
 
-type Subject = { id: string; name: string };
+type Subject = { id: string; name: string; color?: string | null };
 type Room = { id: string; name: string; code: string; };
 
-const days = [
-  { value: "0", key: "sunday" },
-  { value: "1", key: "monday" },
-  { value: "2", key: "tuesday" },
-  { value: "3", key: "wednesday" },
-  { value: "4", key: "thursday" },
-  { value: "5", key: "friday" },
-  { value: "6", key: "saturday" },
+export const GROUP_COLOR_PALETTE = [
+  "#6366f1", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444",
+  "#8b5cf6", "#ec4899", "#d97706", "#14b8a6", "#a855f7",
 ];
 
-type SlotInput = { dayOfWeek: string; startTime: string; endTime: string };
-
-function SlotRow({ index, slot, onChange, onRemove }: { index: number; slot: SlotInput; onChange: (i: number, s: SlotInput) => void; onRemove: (i: number) => void }) {
-  const t = useT();
+function ColorPicker({ value, onChange, label }: { value: string; onChange: (c: string) => void; label: string }) {
   return (
-    <div className="flex items-end gap-2">
-      <div className="flex-1 space-y-1">
-        <Label className="text-xs">{t("groups.day_of_week")}</Label>
-        <Select value={slot.dayOfWeek} onValueChange={(v) => onChange(index, { ...slot, dayOfWeek: v })}>
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {days.map((d) => (
-              <SelectItem key={d.value} value={d.value}>
-                {t(`days.${d.key}`)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <div className="flex flex-wrap items-center gap-2">
+        {GROUP_COLOR_PALETTE.map((c) => (
+          <button
+            key={c}
+            type="button"
+            onClick={() => onChange(c)}
+            className={`size-6 rounded-full border-2 transition-transform hover:scale-110 ${value === c ? "border-foreground scale-110" : "border-transparent"}`}
+            style={{ backgroundColor: c }}
+            aria-label={c}
+          />
+        ))}
+        <label className="flex cursor-pointer items-center gap-1.5 rounded-full border border-input px-2 py-1 text-xs text-muted-foreground">
+          <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="size-4 rounded border-0 bg-transparent p-0" />
+          {value}
+        </label>
       </div>
-      <div className="flex-1 space-y-1">
-        <Label className="text-xs">{t("groups.start_time")}</Label>
-        <Input type="time" value={slot.startTime} onChange={(e) => onChange(index, { ...slot, startTime: e.target.value })} required />
-      </div>
-      <div className="flex-1 space-y-1">
-        <Label className="text-xs">{t("groups.end_time")}</Label>
-        <Input type="time" value={slot.endTime} onChange={(e) => onChange(index, { ...slot, endTime: e.target.value })} required />
-      </div>
-      <Button type="button" variant="ghost" size="icon" className="shrink-0" onClick={() => onRemove(index)}>
-        <Trash2 className="size-4" />
-      </Button>
     </div>
   );
 }
@@ -80,7 +63,10 @@ export function GroupCreateDialog({ subjects, rooms }: { subjects: Subject[]; ro
   const [priceType, setPriceType] = useState("per_session");
   const [teacherId, setTeacherId] = useState("");
   const [roomId, setRoomId] = useState("");
-  const [slots, setSlots] = useState<SlotInput[]>([{ dayOfWeek: "1", startTime: "", endTime: "" }]);
+  const selectedSubject = subjects.find((s) => s.id === subjectId);
+  const [color, setColor] = useState<string>(selectedSubject?.color || GROUP_COLOR_PALETTE[0]);
+  const [slots, setSlots] = useState<{ dayOfWeek: number; startTime: string; endTime: string }[]>([]);
+  const dayNames = t("groups.dayNames").split("|");
   const [state, formAction, pending] = useActionState<ActionResult, FormData>(createGroup, {});
 
   useEffect(() => {
@@ -88,13 +74,19 @@ export function GroupCreateDialog({ subjects, rooms }: { subjects: Subject[]; ro
       toast.success(t("groups.created_success"));
       requestAnimationFrame(() => {
         setOpen(false);
-        setSlots([{ dayOfWeek: "1", startTime: "", endTime: "" }]);
         router.refresh();
       });
     } else if (state?.error) {
       toast.error(state.error);
     }
   }, [state, router, t]);
+
+  useEffect(() => {
+    if (open) {
+      const s = subjects.find((x) => x.id === subjectId);
+      if (s?.color) setColor(s.color);
+    }
+  }, [open, subjectId, subjects]);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -103,27 +95,19 @@ export function GroupCreateDialog({ subjects, rooms }: { subjects: Subject[]; ro
     formData.set("priceType", priceType);
     formData.set("teacherId", teacherId);
     formData.set("roomId", roomId);
-    formData.set("slotCount", String(slots.length));
-    slots.forEach((s, i) => {
-      formData.set(`slot_day_${i}`, s.dayOfWeek);
-      formData.set(`slot_start_${i}`, s.startTime);
-      formData.set(`slot_end_${i}`, s.endTime);
-    });
     startTransition(() => formAction(formData));
   }
 
   function addSlot() {
-    setSlots([...slots, { dayOfWeek: "1", startTime: "", endTime: "" }]);
+    setSlots((prev) => [...prev, { dayOfWeek: 0, startTime: "", endTime: "" }]);
   }
 
-  function updateSlot(index: number, slot: SlotInput) {
-    const updated = [...slots];
-    updated[index] = slot;
-    setSlots(updated);
+  function updateSlot(i: number, patch: Partial<{ dayOfWeek: number; startTime: string; endTime: string }>) {
+    setSlots((prev) => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
   }
 
-  function removeSlot(index: number) {
-    setSlots(slots.filter((_, i) => i !== index));
+  function removeSlot(i: number) {
+    setSlots((prev) => prev.filter((_, idx) => idx !== i));
   }
 
   return (
@@ -187,6 +171,65 @@ export function GroupCreateDialog({ subjects, rooms }: { subjects: Subject[]; ro
             )}
           </div>
 
+          <div className="space-y-2">
+            <Label><CalendarClock className="size-3.5 inline mr-1" />{t("groups.schedule")}</Label>
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-muted/40 px-3 py-2.5">
+              <span className="text-xs text-muted-foreground">{t("groups.no_slots")}</span>
+              <Button type="button" variant="outline" size="sm" onClick={addSlot}>
+                <Plus className="size-3.5" /> {t("groups.add_slot")}
+              </Button>
+            </div>
+            {slots.length > 0 && (
+              <div className="space-y-2 pt-1">
+                <input type="hidden" name="slotCount" value={slots.length} />
+                {slots.map((slot, i) => (
+                  <div key={i} className="rounded-lg border border-input p-2.5 space-y-2">
+                    <div className="grid grid-cols-3 items-end gap-2">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">{t("groups.day")}</Label>
+                        <select
+                          value={slot.dayOfWeek}
+                          onChange={(e) => updateSlot(i, { dayOfWeek: parseInt(e.target.value, 10) })}
+                          name={`slot_day_${i}`}
+                          className="flex h-9 w-full min-w-0 rounded-lg border border-input bg-background px-2 py-1 text-sm shadow-sm outline-none focus-visible:border-ring focus-visible:ring-ring/40 focus-visible:ring-[3px]"
+                        >
+                          {dayNames.map((d, di) => (
+                            <option key={di} value={di}>{d}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor={`slot_start_${i}`} className="text-xs">{t("groups.startTime")}</Label>
+                        <Input
+                          id={`slot_start_${i}`}
+                          type="time"
+                          name={`slot_start_${i}`}
+                          value={slot.startTime}
+                          onChange={(e) => updateSlot(i, { startTime: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor={`slot_end_${i}`} className="text-xs">{t("groups.endTime")}</Label>
+                        <Input
+                          id={`slot_end_${i}`}
+                          type="time"
+                          name={`slot_end_${i}`}
+                          value={slot.endTime}
+                          onChange={(e) => updateSlot(i, { endTime: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end">
+                      <Button type="button" variant="ghost" size="sm" onClick={() => removeSlot(i)}>
+                        <X className="size-4" /> {t("common.delete")}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="level">{t("groups.level_label")}</Label>
@@ -218,17 +261,20 @@ export function GroupCreateDialog({ subjects, rooms }: { subjects: Subject[]; ro
             </div>
           </div>
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium"><Clock className="size-3.5 inline mr-1" />{t("groups.schedule")}</Label>
-              <Button type="button" variant="outline" size="sm" onClick={addSlot}>
-                <Plus className="size-3" /> {t("groups.add_slot")}
-              </Button>
-            </div>
-            {slots.map((slot, i) => (
-              <SlotRow key={i} index={i} slot={slot} onChange={updateSlot} onRemove={removeSlot} />
-            ))}
+          <div className="space-y-2">
+            <Label htmlFor="sessionsIncluded">{t("groups.sessions_included_label")}</Label>
+            <Input
+              id="sessionsIncluded"
+              name="sessionsIncluded"
+              type="number"
+              min="0"
+              placeholder={t("groups.sessions_included_placeholder")}
+            />
+            <p className="text-xs text-muted-foreground">{t("groups.sessions_included_hint")}</p>
           </div>
+
+          <input type="hidden" name="color" value={color} />
+          <ColorPicker value={color} onChange={setColor} label={t("groups.color_label")} />
 
           <DialogFooter>
             <Button type="submit" disabled={pending}>

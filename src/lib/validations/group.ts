@@ -7,8 +7,10 @@ export const groupSchema = z.object({
   maxCapacity: z.coerce.number().int().min(1).max(100).default(10),
   pricePerSession: z.coerce.number().min(0).optional().nullable(),
   priceType: z.enum(["per_session", "monthly", "package"]).default("per_session"),
+  sessionsIncluded: z.coerce.number().int().min(0).optional().nullable(),
   teacherId: z.string().uuid("Invalid teacher").optional().nullable(),
   roomId: z.string().optional().nullable(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Invalid color").optional().nullable(),
 });
 
 export type GroupInput = z.infer<typeof groupSchema>;

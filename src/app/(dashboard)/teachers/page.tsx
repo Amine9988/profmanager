@@ -10,7 +10,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
 } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Trash2, DollarSign, Pencil, X, BookOpenCheck } from "lucide-react";
+import { Plus, Trash2, DollarSign, Pencil, X, BookOpenCheck, Wallet } from "lucide-react";
 import { toast } from "sonner";
 
 interface SubjectInfo {
@@ -39,20 +39,35 @@ interface TeachingLogEntry {
   type: string;
   groupName: string | null;
   subjectName: string | null;
+  presentCount: number;
+}
+
+interface DuesSession {
+  id: string;
+  sessionDate: string;
+  groupName: string | null;
+  presentCount: number;
+  earned: number;
+}
+
+interface DuesData {
+  teacher: Teacher;
+  scope: string;
+  perStudent: boolean;
+  rate: number;
+  monthlyMonths: number;
+  sessions: DuesSession[];
+  totals: { earned: number; paid: number; remaining: number };
 }
 
 const SALARY_TYPES = [
-  "monthly", "fixed", "per_student", "per_hour", "per_session", "percentage",
+  "monthly", "per_student",
 ] as const;
 
 function getSalaryAmountLabel(type: string): string {
   switch (type) {
     case "monthly":     return "الراتب الشهري (د.ج)";
-    case "fixed":       return "المبلغ الثابت (د.ج)";
     case "per_student": return "المبلغ لكل تلميذ (د.ج)";
-    case "per_hour":    return "الأجر بالساعة (د.ج)";
-    case "per_session": return "المبلغ لكل حصة (د.ج)";
-    case "percentage":  return "النسبة المئوية (%)";
     default:            return "المبلغ (د.ج)";
   }
 }
@@ -194,6 +209,7 @@ function TeacherCard({ teacher, onUpdated }: { teacher: Teacher; onUpdated: () =
   const [showPayDialog, setShowPayDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showLogDialog, setShowLogDialog] = useState(false);
+  const [showDuesDialog, setShowDuesDialog] = useState(false);
 
   async function handleDelete() {
     if (!window.confirm(t("common.confirmDelete"))) return;
@@ -219,6 +235,9 @@ function TeacherCard({ teacher, onUpdated }: { teacher: Teacher; onUpdated: () =
           <div className="flex gap-1">
             <Button variant="outline" size="icon" className="size-8" onClick={() => setShowEditDialog(true)} title={t("teachers.edit")}>
               <Pencil className="size-4" />
+            </Button>
+            <Button variant="outline" size="icon" className="size-8" onClick={() => setShowDuesDialog(true)} title={t("teachers.dues")}>
+              <Wallet className="size-4" />
             </Button>
             <Button variant="outline" size="icon" className="size-8" onClick={() => setShowPayDialog(true)} title={t("teachers.pay")}>
               <DollarSign className="size-4" />
@@ -261,6 +280,9 @@ function TeacherCard({ teacher, onUpdated }: { teacher: Teacher; onUpdated: () =
       {showPayDialog && (
         <PayTeacherDialog teacher={teacher} onClose={() => setShowPayDialog(false)} onPaid={onUpdated} />
       )}
+      {showDuesDialog && (
+        <DuesDialog teacher={teacher} onClose={() => setShowDuesDialog(false)} onPaid={onUpdated} />
+      )}
       {showLogDialog && (
         <TeachingLogDialog teacher={teacher} onClose={() => setShowLogDialog(false)} />
       )}
@@ -290,7 +312,7 @@ function TeacherFormDialog({ teacher, onClose, onSaved }: {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState([teacher?.firstName, teacher?.lastName].filter(Boolean).join(" ") || "");
   const [phone, setPhone] = useState(teacher?.phone || "");
-  const [salaryType, setSalaryType] = useState(teacher?.salaryType || "fixed");
+  const [salaryType, setSalaryType] = useState(teacher?.salaryType || "monthly");
   const [salaryAmount, setSalaryAmount] = useState(String(teacher?.salaryAmount || ""));
   const [subjectIds, setSubjectIds] = useState<string[]>(teacher?.subjects?.map((s) => s.id) || []);
   const [allSubjects, setAllSubjects] = useState<SubjectInfo[]>([]);
@@ -341,7 +363,7 @@ function TeacherFormDialog({ teacher, onClose, onSaved }: {
       if (!isEditing) {
         setName("");
         setPhone("");
-        setSalaryType("fixed");
+        setSalaryType("monthly");
         setSalaryAmount("");
         setSubjectIds([]);
       }
@@ -388,14 +410,10 @@ function TeacherFormDialog({ teacher, onClose, onSaved }: {
             <Input
               type="number"
               min="0"
-              step={salaryType === "percentage" ? "1" : "100"}
-              max={salaryType === "percentage" ? "100" : undefined}
+              step="100"
               value={salaryAmount}
               onChange={(e) => setSalaryAmount(e.target.value)}
             />
-            {salaryType === "percentage" && (
-              <p className="text-xs text-muted-foreground">Pourcentage du revenu total du groupe</p>
-            )}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => { if (isEditing) onClose?.(); else setOpen(false); }}>
@@ -527,11 +545,17 @@ function TeachingLogDialog({ teacher, onClose }: { teacher: Teacher; onClose: ()
                     <span>{s.subjectName || "—"}</span>
                     <span>{s.startTime ?? ""}{s.endTime ? ` — ${s.endTime}` : ""}</span>
                   </div>
-                  {s.type && s.type !== "regular" && (
-                    <span className="mt-1 inline-flex w-fit rounded-full bg-accent px-2 py-0.5 text-xs">
-                      {getSessionTypeLabel(s.type, t)}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="inline-flex w-fit items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                      <BookOpenCheck className="size-3.5" />
+                      {t("teachers.students_present", { count: s.presentCount ?? 0 })}
                     </span>
-                  )}
+                    {s.type && s.type !== "regular" && (
+                      <span className="inline-flex w-fit rounded-full bg-accent px-2 py-0.5 text-xs">
+                        {getSessionTypeLabel(s.type, t)}
+                      </span>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             ))
@@ -543,5 +567,137 @@ function TeachingLogDialog({ teacher, onClose }: { teacher: Teacher; onClose: ()
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function DuesDialog({ teacher, onClose, onPaid }: { teacher: Teacher; onClose: () => void; onPaid: () => void }) {
+  const t = useT();
+  const [month, setMonth] = useState("");
+  const [refresh, setRefresh] = useState(0);
+  const [data, setData] = useState<DuesData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [paying, setPaying] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    const q = month ? `?month=${month}` : "";
+    fetch(`/api/teachers/${teacher.id}/dues${q}`)
+      .then((r) => r.json())
+      .then((d) => { if (!cancelled) setData(d); })
+      .catch(() => { if (!cancelled) setData(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [teacher.id, month, refresh]);
+
+  async function handlePayRemaining() {
+    if (!data || data.totals.remaining <= 0) return;
+    setPaying(true);
+    try {
+      const res = await fetch("/api/teachers/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          teacherId: teacher.id,
+          periodMonth: (month || new Date().toISOString().slice(0, 7)) + "-01",
+          amount: data.totals.remaining,
+          notes: t("teachers.dues") || undefined,
+        }),
+      });
+      if (res.ok) {
+        toast.success(t("common.success"));
+        onPaid();
+        setRefresh((r) => r + 1);
+      } else {
+        const err = await res.json();
+        toast.error(err.error || t("common.error"));
+      }
+    } catch { toast.error(t("common.error")); }
+    finally { setPaying(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{t("teachers.dues")} — {teacher.firstName} {teacher.lastName}</DialogTitle>
+        </DialogHeader>
+
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-muted-foreground">{t("teachers.period")}</label>
+            <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="w-44" />
+          </div>
+          {month && (
+            <Button variant="ghost" size="sm" onClick={() => setMonth("")}>{t("teachers.all_period")}</Button>
+          )}
+        </div>
+
+        {loading ? (
+          <p className="p-6 text-center text-sm text-muted-foreground">{t("common.loading")}</p>
+        ) : !data ? (
+          <p className="p-6 text-center text-sm text-muted-foreground">{t("common.error")}</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <TotalsBox label={t("teachers.total_due")} value={data.totals.earned} />
+              <TotalsBox label={t("teachers.total_paid")} value={data.totals.paid} />
+              <TotalsBox label={t("teachers.remaining")} value={data.totals.remaining} warn={data.totals.remaining > 0} />
+            </div>
+
+            {!data.perStudent && data.monthlyMonths > 0 && (
+              <p className="text-sm text-muted-foreground">
+                {t("teachers.monthly_note", { months: data.monthlyMonths })}
+              </p>
+            )}
+
+            <div className="max-h-72 space-y-2 overflow-y-auto">
+              {data.sessions.length === 0 ? (
+                <p className="p-4 text-center text-sm text-muted-foreground">{t("teachers.no_dues_sessions")}</p>
+              ) : (
+                data.sessions.map((s) => (
+                  <Card key={s.id}>
+                    <CardContent className="flex items-center justify-between gap-2 py-2.5">
+                      <div>
+                        <p className="text-sm font-medium">{s.groupName || "—"}</p>
+                        <p className="text-xs text-muted-foreground">{formatDate(s.sessionDate)}</p>
+                      </div>
+                      <div className="flex items-center gap-3 text-sm">
+                        <span className="text-muted-foreground">{t("teachers.students_present", { count: s.presentCount })}</span>
+                        {data.perStudent && <span className="font-medium">{formatCurrency(s.earned)}</span>}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
+
+            {data.totals.remaining > 0 && (
+              <div className="rounded-lg bg-amber-500/10 px-3 py-2 text-sm">
+                {t("teachers.dues_hint", { amount: formatCurrency(data.totals.remaining) })}
+              </div>
+            )}
+
+            <DialogFooter>
+              <Button variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
+              {data.totals.remaining > 0 && (
+                <Button onClick={handlePayRemaining} disabled={paying}>
+                  {paying ? t("common.saving") : t("teachers.pay_remaining", { amount: formatCurrency(data.totals.remaining) })}
+                </Button>
+              )}
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function TotalsBox({ label, value, warn }: { label: string; value: number; warn?: boolean }) {
+  return (
+    <div className={`rounded-lg border p-3 ${warn ? "border-amber-300 bg-amber-500/10" : ""}`}>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-1 text-lg font-bold">{formatCurrency(value)}</p>
+    </div>
   );
 }

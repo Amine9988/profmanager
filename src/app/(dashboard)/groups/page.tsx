@@ -47,6 +47,8 @@ export default async function GroupsPage() {
                   subjectId: g.subjectId,
                   priceType: g.priceType,
                   roomId: g.roomId ?? null,
+                  sessionsIncluded: g.sessionsIncluded ?? null,
+                  color: g.color ?? null,
                 }}
                 subjects={subjects}
                 rooms={rooms}

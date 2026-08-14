@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
       .select("*")
       .eq("tenantId", tenantId)
       .order("date", { ascending: false })
+      .order("createdAt", { ascending: false })
       .limit(500);
 
     if (type) query = query.eq("type", type);

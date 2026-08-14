@@ -5,6 +5,7 @@ import { studentSchema } from "@/lib/validations/student";
 import { revalidateFullApp } from "@/lib/cache";
 import { getT } from "@/lib/i18n";
 import { randomUUID } from "crypto";
+import { sessionEndTimestamp } from "@/lib/session-time";
 
 export type ActionResult = { error?: string; success?: boolean; id?: string };
 
@@ -43,20 +44,67 @@ export async function getStudent(studentId: string) {
 
   if (!student) return null;
 
+  const rawAttendances = Array.isArray(student.attendances) ? student.attendances : student.attendances ? [student.attendances] : [];
+
+  // Resolve group names per session. The local shim can't join the same table
+  // twice in one query, so fetch them separately.
+  const sessionIds = [...new Set(rawAttendances.map((a: any) => a.sessionId).filter(Boolean))];
+  const { data: sessionGroups } = await supabase
+    .from("sessions")
+    .select("id, groups(id, name)")
+    .in("id", sessionIds.length > 0 ? sessionIds : [""]);
+  const sessionGroupMap = new Map<string, string>(
+    (sessionGroups || []).map((sg: any) => [sg.id, sg.groups?.name || null])
+  );
+
+  const groupStudents2 = ((student.group_students as any[]) || [])
+    .filter((gs: any) => gs.status === "active")
+    .map((gs: any) => ({ groupId: gs.groupId, groupName: gs.groups?.name || null, enrolledAt: gs.enrolledAt || null }));
+  const groupNameMap = new Map<string, string>(
+    groupStudents2.filter((g: any) => g.groupId && g.groupName).map((g: any) => [g.groupId, g.groupName])
+  );
+  const enrolledAtByGroup = new Map<string, number>();
+  for (const g of groupStudents2) {
+    if (g.groupId && g.enrolledAt) {
+      const ts = new Date(g.enrolledAt).getTime();
+      if (!Number.isNaN(ts)) enrolledAtByGroup.set(g.groupId, ts);
+    }
+  }
+
+  // Hide any attendance for a session that ended before the student enrolled
+  // in that group (e.g. enrolled on 14 Aug, an 8 Aug session must not appear).
+  const visibleAttendances = rawAttendances.filter((a: any) => {
+    const groupId = a.sessions?.groupId ?? null;
+    if (!groupId) return true;
+    const enrolledMs = enrolledAtByGroup.get(groupId);
+    if (enrolledMs === undefined) return true;
+    const endMs = sessionEndTimestamp(a.sessions);
+    if (endMs === null) return true;
+    return endMs >= enrolledMs;
+  });
+
   return {
     ...student,
     monthlyFee: Number(student.monthlyFee),
-    groupStudents: ((student.group_students as any[]) || []).filter((gs: any) => gs.status === "active").map((gs: any) => ({
-      ...gs,
-      group: gs.groups ? { ...gs.groups, pricePerSession: Number(gs.groups.pricePerSession) } : null,
-    })),
-    attendances: (Array.isArray(student.attendances) ? student.attendances : student.attendances ? [student.attendances] : []).sort((a: any, b: any) => new Date(b.markedAt).getTime() - new Date(a.markedAt).getTime()).slice(0, 20).map((a: any) => ({
+    groupStudents: ((student.group_students as any[]) || []).filter((gs: any) => gs.status === "active").map((gs: any) => {
+      const sessionsIncluded = gs.groups?.sessionsIncluded != null ? Number(gs.groups.sessionsIncluded) : null;
+      const paidCount = (student.payments || []).filter((p: any) => p.groupId === gs.groupId && Number(p.amountPaid) > 0).length;
+      return {
+        ...gs,
+        consumedSessions: gs.consumedSessions != null ? Number(gs.consumedSessions) : 0,
+        paidSessions: sessionsIncluded != null ? paidCount * sessionsIncluded : 0,
+        group: gs.groups ? { ...gs.groups, pricePerSession: Number(gs.groups.pricePerSession) } : null,
+      };
+    }),
+    attendances: visibleAttendances.sort((a: any, b: any) => new Date(b.markedAt).getTime() - new Date(a.markedAt).getTime()).slice(0, 20).map((a: any) => ({
       ...a,
-      session: a.sessions,
+      session: { ...a.sessions, groupName: sessionGroupMap.get(a.sessionId) || null },
     })),
     guardians: (student.guardians as any[]) || [],
     payments: (Array.isArray(student.payments) ? student.payments : student.payments ? [student.payments] : []).map((p: any) => ({
       ...p,
+      groupId: p.groupId ?? null,
+      groupName: p.groupId ? groupNameMap.get(p.groupId) || null : null,
       amountDue: Number(p.amountDue),
       amountPaid: Number(p.amountPaid),
     })),

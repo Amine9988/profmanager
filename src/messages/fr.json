@@ -397,7 +397,10 @@
     "selected_count": "{count} sur {total} sélectionné(s)",
     "total_students": "{count} élève(s)",
     "bulk_delete_success": "{count} élève(s) supprimé(s) avec succès",
-    "bulk_print": "Imprimer les cartes"
+    "bulk_print": "Imprimer les cartes",
+    "remaining_sessions_label": "Séances restantes",
+    "consumed_sessions_label": "Séances utilisées",
+    "consumed_sessions_none": "Aucune séance payée"
   },
   "groups": {
     "teacher": "Enseignant",
@@ -419,6 +422,11 @@
     "per_session": "Par séance",
     "monthly": "Mensuel",
     "package": "Forfait",
+    "sessions_included_label": "Séances incluses dans le paiement",
+    "sessions_included_placeholder": "Ex : 8",
+    "sessions_included_hint": "Ex : 2500 DZD pour 8 séances. Une fois les séances épuisées, l'élève doit payer à nouveau.",
+    "sessions_short": "séances",
+    "color_label": "Couleur du groupe",
     "create_button": "Créer le groupe",
     "creating": "Création...",
     "created_success": "Groupe créé avec succès",
@@ -488,7 +496,7 @@
     "students_label": "Élèves",
     "no_groups_desc": "Créez votre premier groupe pour commencer à organiser vos cours.",
     "recent_sessions": "Dernières séances",
-    "session_completed": "Terminée",
+        "session_completed": "Terminée",
     "session_cancelled": "Annulée",
     "session_scheduled": "Prévue",
     "updated_success": "Groupe modifié avec succès",
@@ -624,6 +632,8 @@
     "next_month": "Mois suivant",
     "current_month": "Mois actuel",
     "amount": "Montant",
+    "all_time": "Toutes les périodes",
+    "bulk_delete_disabled_hint": "La suppression groupée n'est disponible que pour un mois précis",
     "amount_due": "Montant dû",
     "amount_paid": "Payé",
     "paid_on": "Payé le",
@@ -769,7 +779,17 @@
       "cancel": "Annuler",
       "loading": "Réinitialisation en cours...",
       "success": "Système réinitialisé avec succès"
-    }
+    },
+    "export_section": "Exporter les registres en Excel",
+    "export_section_desc": "Téléchargez vos registres dans un fichier Excel bien organisé.",
+    "export_cash": "Registre de caisse",
+    "export_cash_desc": "Toutes les mouvements de caisse",
+    "export_teachers": "Registre des enseignants",
+    "export_teachers_desc": "Enseignants et leurs matières",
+    "export_students": "Registre des élèves",
+    "export_students_desc": "Élèves et leurs frais",
+    "export_success": "Fichier Excel téléchargé.",
+    "export_error": "Échec du téléchargement du fichier Excel."
   },
   "validation": {
     "required": "Le champ {field} est requis.",
@@ -1096,7 +1116,17 @@
     "fullName": "Nom complet",
     "teaching_log": "Registre d'enseignement",
     "taught_sessions": "Nombre de séances enseignées",
-    "no_taught_sessions": "Aucune séance enseignée pour le moment"
+    "no_taught_sessions": "Aucune séance enseignée pour le moment",
+    "students_present": "{count} présent(s)",
+    "dues": "Droits",
+    "all_period": "Toute la période",
+    "total_due": "Total dû",
+    "total_paid": "Payé",
+    "remaining": "Reste",
+    "no_dues_sessions": "Aucune séance terminée sur cette période",
+    "pay_remaining": "Payer le dû ({amount})",
+    "monthly_note": "Salaire mensuel : {months} mois × le montant défini",
+    "dues_hint": "Montant restant : {amount}"
   },
   "levels": {
     "title": "Niveaux",
@@ -1168,7 +1198,8 @@
     "reveal": "Afficher les montants",
     "hide": "Masquer",
     "pin_required": "Entrez le mot de passe",
-    "wrong_password": "Mot de passe incorrect"
+    "wrong_password": "Mot de passe incorrect",
+    "all_time": "Toutes les périodes"
   },
   "calendar": {
     "title": "Calendrier",
@@ -1180,7 +1211,10 @@
     "type_session": "Séance",
     "type_subscription_expiry": "Expiration abonnement",
     "type_payment_due": "Paiement dû",
-    "type_absence": "Absence"
+    "type_absence": "Absence",
+    "payment_due_title": "Paiement dû : {name}",
+    "prev_month": "Mois précédent",
+    "next_month": "Mois suivant"
   },
   "weekly_program": {
     "title": "Programme Hebdomadaire",

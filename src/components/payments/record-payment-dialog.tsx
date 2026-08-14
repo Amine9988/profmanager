@@ -33,14 +33,14 @@ export function RecordPaymentDialog({ studentId: preselectedId, studentName, onR
   const [groups, setGroups] = useState<{ id: string; name: string; pricePerSession: number | null; priceType: string; students: { id: string; fullName: string }[] }[]>([]);
   const [groupId, setGroupId] = useState("");
   const [studentId, setStudentId] = useState(preselectedId || "");
-  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [paymentDate, setPaymentDate] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   });
   const [amount, setAmount] = useState("");
   const [saving, setSaving] = useState(false);
-  const [existingPayment, setExistingPayment] = useState<{ amountDue: number; amountPaid: number } | null>(null);
+
+  const month = paymentDate.slice(0, 7);
 
   useEffect(() => {
     if (open) {
@@ -68,39 +68,18 @@ export function RecordPaymentDialog({ studentId: preselectedId, studentName, onR
           setStudentId("");
         }
         setAmount("");
-        setExistingPayment(null);
       });
     }
   }, [open, preselectedId]);
-
-  useEffect(() => {
-    if (!studentId || !month) return;
-    fetch(`/api/payments?studentId=${studentId}&year=${month.split("-")[0]}&month=${month.split("-")[1]}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.length > 0) {
-          setExistingPayment({ amountDue: data[0].amountDue, amountPaid: data[0].amountPaid });
-        } else {
-          setExistingPayment(null);
-        }
-      })
-      .catch(() => setExistingPayment(null));
-  }, [studentId, month]);
 
   const selectedGroup = groups.find((g) => g.id === groupId);
   const studentGroups = preselectedId ? groups.filter((g) => g.students.some((s) => s.id === preselectedId)) : [];
   const displayGroups = preselectedId ? (studentGroups.length > 0 ? studentGroups : groups) : groups;
   const availableStudents = selectedGroup?.students || [];
   const selectedStudentData = students.find((s) => s.id === studentId);
-  const amountDue = existingPayment?.amountDue ?? selectedGroup?.pricePerSession ?? 0;
-  const alreadyPaid = existingPayment?.amountPaid ?? 0;
-  const remaining = Math.max(amountDue - alreadyPaid, 0);
+  const amountDue = selectedGroup?.pricePerSession ?? 0;
   const advanceBalance = selectedStudentData?.advanceBalance ?? 0;
-  const maxAllowed = existingPayment
-    ? Math.max(amountDue - alreadyPaid, 0)
-    : amountDue > 0
-      ? amountDue
-      : Infinity;
+  const maxAllowed = amountDue > 0 ? amountDue : Infinity;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -192,10 +171,6 @@ export function RecordPaymentDialog({ studentId: preselectedId, studentName, onR
             </div>
           )}
           <div className="space-y-2">
-            <Label htmlFor="month">{t("payments.month")}</Label>
-            <Input id="month" type="month" value={month} onChange={(e) => setMonth(e.target.value)} required />
-          </div>
-          <div className="space-y-2">
             <Label htmlFor="paymentDate">{t("payments.payment_date")}</Label>
             <div className="flex gap-2">
               <Input id="paymentDate" type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} required className="flex-1" />
@@ -213,22 +188,14 @@ export function RecordPaymentDialog({ studentId: preselectedId, studentName, onR
             </div>
           </div>
 
-          {groupId && studentId && month && (
+          {groupId && studentId && (amountDue > 0 || advanceBalance > 0) && (
             <div className="rounded-lg border bg-muted/30 p-4 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">{t("payments.amount_due")}</span>
-                <span className="font-semibold">{formatCurrency(amountDue)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">{t("payments.amount_paid")}</span>
-                <span className="font-semibold text-green-600">{formatCurrency(alreadyPaid)}</span>
-              </div>
-              <div className="flex justify-between text-sm border-t pt-2">
-                <span className="text-muted-foreground">{t("payments.remaining")}</span>
-                <span className={`font-semibold ${remaining > 0 ? "text-red-600" : "text-green-600"}`}>
-                  {formatCurrency(remaining)}
-                </span>
-              </div>
+              {amountDue > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">{t("payments.amount_due")}</span>
+                  <span className="font-semibold">{formatCurrency(amountDue)}</span>
+                </div>
+              )}
               {advanceBalance > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">{t("payments.advance")}</span>

@@ -49,12 +49,12 @@ export const Sidebar = memo(function Sidebar() {
   const { locale } = useI18n();
 
   return (
-    <aside className="hidden w-60 shrink-0 border-r bg-sidebar md:flex md:flex-col">
-      <div className="flex h-14 items-center border-b border-sidebar-border px-6">
+    <aside className="hidden w-60 shrink-0 border-r border-blue-950 bg-blue-900 text-white md:flex md:flex-col">
+      <div className="flex h-14 items-center border-b border-white/10 px-6">
         <Link href="/overview" className="text-lg font-bold tracking-tight">
           ProfManager
         </Link>
-        <span className="ml-2 text-[10px] uppercase text-muted-foreground/60 font-mono">[{locale}]</span>
+        <span className="ml-2 text-[10px] uppercase text-white/60 font-mono">[{locale}]</span>
       </div>
       <nav className="flex-1 space-y-0.5 p-3 overflow-y-auto">
         {NAV_ITEMS.map((item) => {
@@ -66,11 +66,11 @@ export const Sidebar = memo(function Sidebar() {
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 group",
                 active
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  ? "bg-white/15 text-white"
+                  : "text-white/85 hover:bg-white/10 hover:text-white"
               )}
             >
-              <item.icon className={cn("size-4 shrink-0 transition-all duration-200", active && "text-primary")} />
+              <item.icon className={cn("size-4 shrink-0 transition-all duration-200", active ? "text-white" : "text-white/85")} />
               <span className="truncate">{t(`nav.${item.key}`)}</span>
               {item.badge && <NavOverdueBadge />}
             </Link>

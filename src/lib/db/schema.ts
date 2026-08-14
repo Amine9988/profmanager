@@ -170,9 +170,11 @@ CREATE TABLE IF NOT EXISTS "groups" (
   maxCapacity INTEGER,
   pricePerSession REAL,
   priceType TEXT DEFAULT 'per_session',
+  sessionsIncluded INTEGER,
   roomId TEXT REFERENCES rooms(id),
   workspaceId TEXT REFERENCES workspaces(id),
   status TEXT NOT NULL DEFAULT 'active',
+  color TEXT,
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL
 );
@@ -183,6 +185,8 @@ CREATE TABLE IF NOT EXISTS group_students (
   groupId TEXT NOT NULL REFERENCES "groups"(id),
   studentId TEXT NOT NULL REFERENCES students(id),
   status TEXT NOT NULL DEFAULT 'active',
+  remainingSessions INTEGER,
+  consumedSessions INTEGER DEFAULT 0,
   enrolledAt TEXT
 );
 
@@ -210,6 +214,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   type TEXT NOT NULL DEFAULT 'regular',
   cancellationReason TEXT,
   topicCovered TEXT,
+  creditsConsumed INTEGER DEFAULT 0,
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL
 );
@@ -230,6 +235,7 @@ CREATE TABLE IF NOT EXISTS payments (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL REFERENCES tenants(id),
   studentId TEXT NOT NULL REFERENCES students(id),
+  groupId TEXT REFERENCES "groups"(id),
   month TEXT NOT NULL,
   amountDue REAL NOT NULL,
   amountPaid REAL NOT NULL,

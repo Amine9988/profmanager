@@ -43,6 +43,7 @@ export default function CaissePage() {
   const [data, setData] = useState<CaisseData | null>(null);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<string>("");
+  const [allTime, setAllTime] = useState(false);
   const [viewMonth, setViewMonth] = useState<string>(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -85,12 +86,14 @@ export default function CaissePage() {
     const lastOfMonth = `${y}-${String(m).padStart(2, "0")}-${new Date(y, m, 0).getDate()}`;
     const params = new URLSearchParams();
     if (filterType) params.set("type", filterType);
-    params.set("from", firstOfMonth);
-    params.set("to", lastOfMonth);
+    if (!allTime) {
+      params.set("from", firstOfMonth);
+      params.set("to", lastOfMonth);
+    }
     const res = await fetch(`/api/caisse?${params.toString()}`);
     if (res.ok) setData(await res.json());
     setLoading(false);
-  }, [filterType, viewMonth]);
+  }, [filterType, viewMonth, allTime]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -211,12 +214,21 @@ export default function CaissePage() {
           <option value="income">{t("caisse.income")}</option>
           <option value="expense">{t("caisse.expense")}</option>
         </select>
+        <label className="flex cursor-pointer items-center gap-1.5 text-sm">
+          <input
+            type="checkbox"
+            checked={allTime}
+            onChange={(e) => setAllTime(e.target.checked)}
+            className="size-4 accent-primary"
+          />
+          {t("caisse.all_time")}
+        </label>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => changeMonth(-1)} title={t("payments.prev_month")}>
+          <Button variant="outline" size="icon" onClick={() => changeMonth(-1)} title={t("payments.prev_month")} disabled={allTime}>
             {direction === "rtl" ? <ChevronRight className="size-4" /> : <ChevronLeft className="size-4" />}
           </Button>
-          <Input type="month" value={viewMonth} onChange={(e) => e.target.value && setViewMonth(e.target.value)} className="w-44" aria-label={t("payments.month")} />
-          <Button variant="outline" size="icon" onClick={() => changeMonth(1)} title={t("payments.next_month")}>
+          <Input type="month" value={viewMonth} onChange={(e) => e.target.value && setViewMonth(e.target.value)} className="w-44" aria-label={t("payments.month")} disabled={allTime} />
+          <Button variant="outline" size="icon" onClick={() => changeMonth(1)} title={t("payments.next_month")} disabled={allTime}>
             {direction === "rtl" ? <ChevronLeft className="size-4" /> : <ChevronRight className="size-4" />}
           </Button>
         </div>

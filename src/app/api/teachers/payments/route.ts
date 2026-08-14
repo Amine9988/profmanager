@@ -43,6 +43,15 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+    const teacherRel: any =
+      payment?.teachers ??
+      payment?.teacher ??
+      (Array.isArray(payment?.teachers) ? payment.teachers[0] : null);
+    const teacherName = [teacherRel?.firstName, teacherRel?.lastName]
+      .filter(Boolean)
+      .join(" ");
+    const description = `Salaire ${teacherName || "enseignant"}`.trim();
+
     await supabase.from("cash_movements").insert({
       id: crypto.randomUUID(),
       tenantId,
@@ -50,7 +59,7 @@ export async function POST(req: NextRequest) {
       type: "expense",
       category: "Salaire",
       amount: Number(amount),
-      description: `Salaire enseignant`,
+      description,
       paymentMethod: "cash",
       date: new Date().toISOString().split("T")[0],
       referenceId: payment.id,

@@ -3,10 +3,34 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CalendarDays, BookOpen, CreditCard, AlertTriangle, X } from "@/components/ui/icons";
 import Link from "next/link";
-import { formatDate } from "@/lib/utils";
 import { getT, getInitialLocale } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
+
+function parseDateParts(dateStr: string): { year: number; month: number; day: number } | null {
+  if (!dateStr) return null;
+  const m = String(dateStr).slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  return { year: +m[1], month: +m[2], day: +m[3] };
+}
+
+// Day-of-month of an event's date, computed from the date parts in the local
+// timezone. Parsing "2026-08-13" via `new Date()` uses UTC midnight, which
+// would shift the event to the previous day on negative-offset timezones.
+function eventDay(dateStr: string): number {
+  const p = parseDateParts(dateStr);
+  return p ? p.day : new Date(dateStr).getDate();
+}
+
+function formatEventDate(dateStr: string, locale: string): string {
+  const p = parseDateParts(dateStr);
+  if (!p) return dateStr;
+  return new Intl.DateTimeFormat(locale === "ar" ? "ar-DZ" : locale, {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  }).format(new Date(p.year, p.month - 1, p.day));
+}
 
 const typeColors: Record<string, "default" | "secondary" | "destructive" | "warning" | "success"> = {
   session: "default",
@@ -45,7 +69,7 @@ export default async function CalendarPage({
 
   const eventsByDay = new Map<number, typeof events>();
   for (const e of events) {
-    const day = new Date(e.date).getDate();
+    const day = eventDay(String(e.date));
     if (!eventsByDay.has(day)) eventsByDay.set(day, []);
     eventsByDay.get(day)!.push(e);
   }
@@ -64,14 +88,14 @@ export default async function CalendarPage({
           {t("calendar.title")}
         </h1>
         <div className="flex items-center gap-2">
-          <a href={`/calendar?month=${prevMonth}&year=${prevYear}`} className="rounded-md border px-3 py-1.5 text-sm hover:bg-accent">
-            â†
+          <a href={`/calendar?month=${prevMonth}&year=${prevYear}`} className="rounded-md border px-3 py-1.5 text-sm hover:bg-accent" aria-label={t("calendar.prev_month")}>
+            {locale === "ar" ? "→" : "←"}
           </a>
           <span className="min-w-32 text-center font-medium">
             {t(`months.${monthKeys[month - 1]}`)} {year}
           </span>
-          <a href={`/calendar?month=${nextMonth}&year=${nextYear}`} className="rounded-md border px-3 py-1.5 text-sm hover:bg-accent">
-            â†’
+          <a href={`/calendar?month=${nextMonth}&year=${nextYear}`} className="rounded-md border px-3 py-1.5 text-sm hover:bg-accent" aria-label={t("calendar.next_month")}>
+            {locale === "ar" ? "←" : "→"}
           </a>
         </div>
       </div>
@@ -142,6 +166,10 @@ export default async function CalendarPage({
             <div className="space-y-2">
               {events.map((e) => {
                 const BadgeIcon = typeIcons[e.type];
+                const label =
+                  e.type === "payment_due"
+                    ? t("calendar.payment_due_title", { name: e.studentName || "" })
+                    : e.title;
                 return (
                   <Link
                     key={e.id}
@@ -150,9 +178,9 @@ export default async function CalendarPage({
                   >
                     <BadgeIcon className="size-4 shrink-0 text-muted-foreground" />
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{e.title}</p>
+                      <p className="font-medium truncate">{label}</p>
                       <p className="text-xs text-muted-foreground">
-                        {formatDate(e.date, "ar-DZ")}
+                        {formatEventDate(String(e.date), locale)}
                         {e.groupName ? ` · ${e.groupName}` : ""}
                         {e.roomName ? ` · ${e.roomName}` : ""}
                       </p>

@@ -26,6 +26,7 @@ export function LevelSelect({
 }: LevelSelectProps) {
   const [levels, setLevels] = useState<Level[]>([]);
   const [loading, setLoading] = useState(true);
+  const [value, setValue] = useState(defaultValue ?? "");
 
   useEffect(() => {
     fetch("/api/levels")
@@ -38,6 +39,15 @@ export function LevelSelect({
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  // The options load asynchronously, while the stored level (defaultValue) is
+  // known synchronously. Once the list is ready, push that stored value into a
+  // controlled select so the edit form shows the saved level instead of falling
+  // back to the first option or the placeholder. It re-syncs when the dialog is
+  // reused for a different record.
+  useEffect(() => {
+    if (!loading) setValue(defaultValue ?? "");
+  }, [loading, defaultValue]);
 
   function groupLabel(cycle: string): string {
     switch (cycle) {
@@ -54,16 +64,27 @@ export function LevelSelect({
     grouped.get(l.cycle)!.push(l);
   }
 
+  const CLASSES =
+    "flex h-9 w-full min-w-0 rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm transition-all duration-200 focus-visible:border-ring focus-visible:ring-ring/40 focus-visible:ring-[3px] focus-visible:shadow-md outline-none disabled:opacity-50";
+
+  if (loading) {
+    return (
+      <select disabled className={CLASSES} value="" aria-label={placeholder}>
+        <option value="">جاري التحميل...</option>
+      </select>
+    );
+  }
+
   return (
     <select
       name={name}
-      defaultValue={defaultValue ?? ""}
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
       required={required}
-      disabled={loading}
-      className="flex h-9 w-full min-w-0 rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm transition-all duration-200 focus-visible:border-ring focus-visible:ring-ring/40 focus-visible:ring-[3px] focus-visible:shadow-md outline-none disabled:opacity-50"
+      className={CLASSES}
     >
       <option value="" disabled>
-        {loading ? "جاري التحميل..." : placeholder}
+        {placeholder}
       </option>
       {Array.from(grouped.entries()).map(([cycle, items]) => (
         <optgroup key={cycle} label={groupLabel(cycle)}>

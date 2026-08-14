@@ -26,6 +26,7 @@
       "output": "dist"
     },
     "asar": false,
+    "electronLanguages": ["fr", "ar", "en-US", "en-GB"],
     "electronDist": "node_modules/electron/dist",
     "files": [
       "main.js",

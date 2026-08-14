@@ -35,6 +35,7 @@ let _db: SqlJsDatabase | null = null;
 let _dbPath: string | null = null;
 let _dirty = false;
 let _lastLoadMtime = 0;
+let _lastLoadSize = 0;
 let _backupState: "local" | "restored" | "absent" | "unknown" = "unknown";
 
 export function getDbPath(): string {
@@ -53,7 +54,11 @@ function saveDb() {
     const data = _db.export();
     fs.writeFileSync(_dbPath, Buffer.from(data));
     _dirty = false;
-    try { _lastLoadMtime = fs.statSync(_dbPath).mtimeMs; } catch {}
+    try {
+      const st = fs.statSync(_dbPath);
+      _lastLoadMtime = st.mtimeMs;
+      _lastLoadSize = st.size;
+    } catch {}
     try { if (_backupState !== "unknown") queueBackupPush(data); } catch {}
   } catch {} /* fail silently */
 }
@@ -128,13 +133,28 @@ class StmtWrapper {
   free() { if (this.stmt) { this.stmt.free(); this.stmt = null; } }
 }
 
+function refreshLoadMarkers() {
+  try {
+    const st = fs.statSync(getDbPath());
+    _lastLoadMtime = st.mtimeMs;
+    _lastLoadSize = st.size;
+  } catch {
+    _lastLoadMtime = 0;
+    _lastLoadSize = 0;
+  }
+}
+
 export async function getDb(): Promise<SqlJsDatabase> {
   const dbPath = getDbPath();
   if (_db) {
     try {
       const stat = fs.statSync(dbPath);
-      const mtime = stat.mtimeMs;
-      if (mtime > _lastLoadMtime) {
+      // Reload whenever the file's mtime OR size changed since we last read it.
+      // A pure `>` mtime check misses writes that land within the same millisecond
+      // (different module instances save the same file back-to-back), and a same-size
+      // rewrite can dodge an mtime-only comparison; bounding on both covers factory
+      // resets, restores and concurrent instances.
+      if (stat.mtimeMs !== _lastLoadMtime || stat.size !== _lastLoadSize) {
         _db.close();
         _db = null;
       }
@@ -170,7 +190,7 @@ export async function getDb(): Promise<SqlJsDatabase> {
   if (fs.existsSync(dbPath)) {
     const buf = fs.readFileSync(dbPath);
     _db = new _sql.Database(buf);
-    try { _lastLoadMtime = fs.statSync(dbPath).mtimeMs; } catch {}
+    refreshLoadMarkers();
   } else {
     _db = new _sql.Database();
   }
@@ -189,6 +209,32 @@ export async function getDb(): Promise<SqlJsDatabase> {
     }
   }
   _db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_attendances_session_student ON attendances(sessionId, studentId)");
+  try { _db.exec("ALTER TABLE payments ADD COLUMN groupId TEXT"); } catch {}
+  // Backfill legacy payments (recorded before groupId existed): attribute each
+  // to the active group whose price matches the amount due (earliest enrollment wins).
+  try {
+    _db.exec(`
+      UPDATE payments
+      SET groupId = (
+        SELECT gs.groupId
+        FROM group_students gs
+        JOIN "groups" g ON g.id = gs.groupId
+        WHERE gs.studentId = payments.studentId
+          AND gs.status = 'active'
+          AND g.pricePerSession = payments.amountDue
+        ORDER BY gs.enrolledAt ASC
+        LIMIT 1
+      )
+      WHERE groupId IS NULL
+        AND EXISTS (
+          SELECT 1 FROM group_students gs2
+          JOIN "groups" g2 ON g2.id = gs2.groupId
+          WHERE gs2.studentId = payments.studentId
+            AND gs2.status = 'active'
+            AND g2.pricePerSession = payments.amountDue
+        )
+    `);
+  } catch {}
   // Runtime migrations
   try { _db.exec("ALTER TABLE tenants ADD COLUMN schoolPhone TEXT"); } catch {}
   try { _db.exec("ALTER TABLE tenants ADD COLUMN schoolLogo TEXT"); } catch {}
@@ -196,6 +242,105 @@ export async function getDb(): Promise<SqlJsDatabase> {
   try { _db.exec("ALTER TABLE users ADD COLUMN passwordHash TEXT"); } catch {}
   try { _db.exec("ALTER TABLE tenants ADD COLUMN trialStartsAt TEXT"); } catch {}
   try { _db.exec("ALTER TABLE tenants ADD COLUMN trialEndsAt TEXT"); } catch {}
+  try { _db.exec(`ALTER TABLE "groups" ADD COLUMN sessionsIncluded INTEGER`); } catch {}
+  try { _db.exec(`ALTER TABLE "groups" ADD COLUMN color TEXT`); } catch {}
+  try { _db.exec("ALTER TABLE group_students ADD COLUMN remainingSessions INTEGER"); } catch {}
+  try { _db.exec("ALTER TABLE group_students ADD COLUMN consumedSessions INTEGER DEFAULT 0"); } catch {}
+  try { _db.exec("ALTER TABLE sessions ADD COLUMN creditsConsumed INTEGER DEFAULT 0"); } catch {}
+  // Give each group without a color a distinct palette color so sessions of
+  // different groups are easy to tell apart (rowid-stable; groups sharing a
+  // subject still get their own color).
+  try {
+    const GROUP_COLOR_PALETTE = ["#6366f1", "#0ea5e9", "#f59e0b", "#ef4444", "#10b981", "#8b5cf6", "#ec4899", "#d97706", "#14b8a6", "#a855f7"];
+    const nullColor = _db.exec(`SELECT rowid, id FROM "groups" WHERE color IS NULL OR color = '' ORDER BY rowid`);
+    const rows = nullColor?.[0]?.values as [number, string][] | undefined;
+    if (rows && rows.length > 0) {
+      for (let i = 0; i < rows.length; i++) {
+        const [rowid, id] = rows[i];
+        const stmt = _db.prepare(`UPDATE "groups" SET color = ? WHERE rowid = ?`);
+        stmt.run([GROUP_COLOR_PALETTE[i % GROUP_COLOR_PALETTE.length], rowid]);
+        stmt.free();
+        void id;
+      }
+      _dirty = true;
+      saveDb();
+    }
+  } catch {}
+  // Backfill the cumulative session counter: for every active member, count how
+  // many expired sessions of the group happened on/after their first payment
+  // for that group. Idempotent (recomputed on every boot) and also repairs
+  // members whose sessions were already creditsConsumed=1 before this column
+  // existed (consumeExpiredSessionCredits never reprocesses them).
+  try {
+    const sess = _db.exec(`SELECT id, groupId, sessionDate, startTime, endTime, status, creditsConsumed FROM sessions`);
+    const nowMs = Date.now();
+    const groupSessions = new Map<string, number[]>();
+    for (const [, gId, sessionDate, startTime, endTime, status, creditsConsumed] of (sess?.[0]?.values ?? []) as [string, string | null, string | null, string | null, string | null, string | null, number | null][]) {
+      // Only sessions already officially consumed count here. Sessions still
+      // creditsConsumed=0 are accounted for by consumeExpiredSessionCredits
+      // itself (which sets the flag right after incrementing the counter), so
+      // they must NOT be tallied twice — that was the "2 بدل 3" overcount.
+      if (!gId || status === "cancelled" || Number(creditsConsumed) !== 1) continue;
+      const m0 = String(startTime || "").match(/^(\d{1,2}):(\d{2})/);
+      const m1 = String(endTime || "").match(/^(\d{1,2}):(\d{2})/);
+      const datePart = String(sessionDate || "").slice(0, 10);
+      const d = datePart.split("-").map(Number);
+      if (!m0 || !m1 || d.length !== 3 || !d[0]) continue;
+      const start = new Date(d[0], d[1] - 1, d[2], Number(m0[1]), Number(m0[2])).getTime();
+      const end = new Date(d[0], d[1] - 1, d[2], Number(m1[1]), Number(m1[2])).getTime();
+      if (end <= start || end >= nowMs) continue;
+      const list = groupSessions.get(gId) || [];
+      list.push(end);
+      groupSessions.set(gId, list);
+    }
+
+    const pay = _db.exec(`SELECT studentId, groupId, amountPaid, paidAt, createdAt FROM payments WHERE amountPaid > 0`);
+    const firstPaid = new Map<string, number>();
+    for (const [studentId, gId, , paidAt, createdAt] of (pay?.[0]?.values ?? []) as [string, string | null, number | null, string | null, string | null][]) {
+      if (!studentId || !gId) continue;
+      const ts = paidAt ? new Date(String(paidAt)).getTime() : createdAt ? new Date(String(createdAt)).getTime() : 0;
+      if (!ts) continue;
+      const key = `${studentId}|${gId}`;
+      const prev = firstPaid.get(key);
+      if (prev === undefined || ts < prev) firstPaid.set(key, ts);
+    }
+
+    const gs = _db.exec(`SELECT id, studentId, groupId FROM group_students`);
+    let changed = false;
+    for (const [id, studentId, gId] of (gs?.[0]?.values ?? []) as [string, string, string][]) {
+      const first = firstPaid.get(`${studentId}|${gId}`);
+      if (first === undefined) continue;
+      const ends = groupSessions.get(gId) || [];
+      const count = ends.filter((e) => e >= first).length;
+      const stmt = _db.prepare(`UPDATE group_students SET consumedSessions = ? WHERE id = ?`);
+      stmt.run([count, id]);
+      stmt.free();
+      changed = true;
+    }
+    if (changed) {
+      _dirty = true;
+      saveDb();
+    }
+  } catch {}
+  // Backfill teacher salary expense labels: older records were created with the
+  // generic "Salaire enseignant" description. Enrich them with the teacher name
+  // so the cash ledger shows who was paid. Idempotent.
+  try {
+    const rows = _db.exec(`SELECT cm.rowid AS rid, t.firstName AS firstName, t.lastName AS lastName
+      FROM cash_movements cm
+      JOIN teacher_payments tp ON tp.id = cm.referenceId
+      JOIN teachers t ON t.id = tp.teacherId
+      WHERE cm.autoGenerated = 1 AND cm.type = 'expense' AND cm.description = 'Salaire enseignant'`);
+    if (rows?.[0]?.values?.length) {
+      const stmt = _db.prepare(`UPDATE cash_movements SET description = ? WHERE rowid = ?`);
+      for (const [rid, firstName, lastName] of rows[0].values as [number, string | null, string | null][]) {
+        stmt.run([`Salaire ${[firstName, lastName].filter(Boolean).join(" ")}`.trim(), rid]);
+      }
+      stmt.free();
+      _dirty = true;
+      saveDb();
+    }
+  } catch {}
   _db.exec(`CREATE TABLE IF NOT EXISTS auth_sessions (
     id TEXT PRIMARY KEY,
     userId TEXT NOT NULL,
@@ -248,6 +393,30 @@ function prepare(db: SqlJsDatabase, sql: string): StmtWrapper {
 
 export function closeDb() {
   if (_db) { saveDb(); _db.close(); _db = null; }
+}
+
+// Hard factory reset: rebuild the local SQLite file from scratch (schema + seed
+// only). Wipes ALL tenant data (students, teachers, payments, groups, rooms,
+// cash movements, certificates, ...) while keeping the DB file alive in memory
+// so subsequent requests see the empty state immediately.
+export async function resetDatabase(): Promise<void> {
+  if (!_sql) {
+    _sql = await initSqlJs({
+      locateFile: (file: string) => {
+        const p = path.join(__dirname, "node_modules", "sql.js", "dist", file);
+        try { if (fs.existsSync(p)) return p } catch {}
+        return path.join(/*turbopackIgnore: true*/ process.cwd(), "node_modules", "sql.js", "dist", file);
+      },
+    });
+  }
+  if (_db) { _db.close(); _db = null; }
+  const db = new _sql.Database();
+  db.exec(SCHEMA_SQL);
+  db.exec(SEED_SQL);
+  _db = db;
+  _dirty = true;
+  saveDb();
+  refreshLoadMarkers();
 }
 
 export function persist() {
@@ -719,8 +888,8 @@ class QueryBuilder implements PromiseLike<QueryResult> {
           } else {
             if (entry[ck.table] === null || entry[ck.table] === undefined) {
               entry[ck.table] = relRows[ck.table];
-              attachChildren(ck.table, entry[ck.table]);
             }
+            attachChildren(ck.table, entry[ck.table]);
           }
         }
       };
@@ -741,8 +910,8 @@ class QueryBuilder implements PromiseLike<QueryResult> {
         } else {
           if (base[jk.table] === null || base[jk.table] === undefined) {
             base[jk.table] = relRows[jk.table];
-            attachChildren(jk.table, base[jk.table]);
           }
+          attachChildren(jk.table, base[jk.table]);
         }
       }
     }

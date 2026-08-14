@@ -197,6 +197,65 @@ if (fs.existsSync(SRC_NEXT_NM)) {
   }
 }
 
+// Step 4b5: Slim down the packaged server (production never needs these)
+console.log("\n[4b5/4] Slimming production node_modules...");
+(function slim(nmDir) {
+  let removedBytes = 0;
+  const rm = (p) => {
+    try { fs.rmSync(p, { recursive: true, force: true }); } catch {}
+  };
+  const dirSize = (p) => {
+    if (!fs.existsSync(p)) return 0;
+    let t = 0;
+    const walk = (dir) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const fp = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(fp);
+        else if (entry.isFile()) { try { t += fs.statSync(fp).size; } catch {} }
+      }
+    };
+    walk(p);
+    return t;
+  };
+  const before = dirSize(nmDir);
+
+  const nextDist = path.join(nmDir, "next", "dist");
+  if (fs.existsSync(nextDist)) {
+    // 1. Source maps: only used by devtools, never at runtime.
+    const maps = fs.readdirSync(nextDist, { recursive: true }).filter(f => f.endsWith(".map"));
+    for (const f of maps) rm(path.join(nextDist, f));
+    removedBytes += maps.length;
+    console.log("  removed " + maps.length + " source maps from next/dist");
+
+    // 2. Dev-only runtime files (NODE_ENV=production loads *.prod.* variants).
+    const devFiles = fs.readdirSync(nextDist, { recursive: true }).filter(f =>
+      /\.dev\.(js|cjs|mjs)$/.test(f)
+    );
+    for (const f of devFiles) rm(path.join(nextDist, f));
+    removedBytes += devFiles.length;
+    console.log("  removed " + devFiles.length + " dev runtime files from next/dist");
+  }
+
+  // 3. sql.js debug/asm-growth variants (production loads sql-wasm.js/.wasm only).
+  for (const sqlDir of ["sql.js", ...(fs.readdirSync(nmDir).filter(n => /^sql\.js-/.test(n)))]) {
+    const d = path.join(nmDir, sqlDir, "dist");
+    if (!fs.existsSync(d)) continue;
+    for (const f of fs.readdirSync(d)) {
+      if (/-(debug|memory-growth)\./.test(f)) rm(path.join(d, f));
+    }
+    console.log("  trimmed debug variants in " + sqlDir);
+  }
+
+  // 4. Chromium license HTML (11MB of pure text, not needed at runtime).
+  const winUnpackedRoot = path.join(ELECTRON, "dist", "win-unpacked");
+  for (const f of ["LICENSES.chromium.html", "LICENSE.electron.txt"]) {
+    rm(path.join(winUnpackedRoot, f));
+  }
+
+  const after = dirSize(nmDir);
+  console.log("  node_modules before=" + (before/1048576).toFixed(1) + "MB after=" + (after/1048576).toFixed(1) + "MB saved=" + ((before-after)/1048576).toFixed(1) + "MB");
+})(dstNm);
+
 // Step 4c: Build NSIS installer from the modified unpackaged app
 console.log("\n[4c/4] Building NSIS installer from unpackaged app...");
 run("node node_modules\\electron-builder\\cli.js --win --prepackaged=dist/win-unpacked", ELECTRON);

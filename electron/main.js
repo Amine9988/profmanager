@@ -77,19 +77,11 @@ let tray = null;
 let isQuitting = false;
 let trayNotified = false;
 let currentPort = 3001;
+let serverOwned = false;
 
-const gotTheLock = app.requestSingleInstanceLock();
-if (!gotTheLock) {
-  app.quit();
-} else {
-  app.on("second-instance", () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.show();
-      mainWindow.focus();
-    }
-  });
-}
+// No single-instance lock gate: it silently quits instead of showing a window
+// when a previous instance runs elevated (UAC mismatch). Instead every launch
+// attaches to (or starts) the real server, guaranteeing a window opens.
 
 function killServer() {
   if (!serverChild) return;
@@ -234,6 +226,14 @@ function spawnServer(standaloneDir, port) {
 }
 
 async function startServer(standaloneDir) {
+  // If a ProfManager server is already serving on one of our ports, attach to
+  // it instead of spawning a duplicate so any double-click always opens a window.
+  for (const port of [3001, 3002, 3003, 3004, 3005]) {
+    if (!(await isPortFree(port))) {
+      log("attaching to existing server on port " + port);
+      return { port, child: null };
+    }
+  }
   let lastErr = "";
   for (const port of [3001, 3002, 3003, 3004, 3005]) {
     log("trying port " + port);
@@ -292,8 +292,8 @@ app.whenReady().then(async () => {
   mainWindow.setMenuBarVisibility(false);
 
   mainWindow.on("close", (e) => {
-    log("window close event (isQuitting=" + isQuitting + ")");
-    if (!isQuitting) {
+    log("window close event (isQuitting=" + isQuitting + " serverOwned=" + serverOwned + ")");
+    if (!isQuitting && serverOwned) {
       e.preventDefault();
       mainWindow.hide();
       log("minimized to tray, server stays running on port " + currentPort);
@@ -307,27 +307,33 @@ app.whenReady().then(async () => {
         } catch {}
       }
     } else {
+      isQuitting = true;
       killServer();
     }
   });
 
   try {
-    const { port } = await startServer(STANDALONE_DIR);
+    const { port, child } = await startServer(STANDALONE_DIR);
     currentPort = port;
+    const ownsServer = !!child;
+    serverOwned = ownsServer;
 
     const lanIp = getLanIp();
-    if (lanIp) {
+    if (lanIp && ownsServer) {
       const ok = addFirewallRule(port);
       log("scan address: http://" + lanIp + ":" + port + "  firewall=" + ok);
       mainWindow.setTitle("ProfManager — scan: http://" + lanIp + ":" + port);
     } else {
-      log("no LAN IP found (offline)");
+      log("no LAN IP found (offline) or attached to existing server");
     }
 
-    // USB scan (cable): phone scans cards, result shows on this computer.
-    startAdbReverse(port);
-
-    setupTray(port);
+    if (ownsServer) {
+      // USB scan (cable): phone scans cards, result shows on this computer.
+      startAdbReverse(port);
+      setupTray(port);
+    } else {
+      log("attached mode: window only, tray/adb handled by owning instance");
+    }
 
     log("loading http://127.0.0.1:" + port + "/overview");
     mainWindow.loadURL("http://127.0.0.1:" + port + "/overview");

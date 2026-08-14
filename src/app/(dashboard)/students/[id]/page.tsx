@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RecordPaymentDialog } from "@/components/payments/record-payment-dialog";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { formatCurrency, formatDate, initials } from "@/lib/utils";
+import { formatCurrency, formatDate, initials, sessionCounterDisplay } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { StudentEditDialog } from "@/components/students/student-edit-dialog";
 import { CardDialog } from "@/components/students/card-dialog";
@@ -19,13 +19,6 @@ const statusVariant: Record<string, "success" | "destructive" | "warning" | "sec
   absent: "destructive",
   late: "warning",
   excused: "secondary",
-};
-
-const paymentStatusVariant: Record<string, "success" | "destructive" | "warning" | "secondary"> = {
-  paid: "success",
-  overdue: "destructive",
-  pending: "warning",
-  partial: "secondary",
 };
 
 export default async function StudentDetailPage({
@@ -45,11 +38,28 @@ export default async function StudentDetailPage({
 
   const groups = (student.groupStudents as any[])
     .filter((gs: any) => gs.status === "active")
-    .map((gs: any) => ({ id: gs.group?.id ?? "?", name: gs.group?.name ?? "?" }));
+    .map((gs: any) => ({
+      id: gs.group?.id ?? "?",
+      name: gs.group?.name ?? "?",
+      sessionsIncluded: gs.group?.sessionsIncluded != null ? Number(gs.group.sessionsIncluded) : null,
+      consumedSessions: gs.consumedSessions != null ? Number(gs.consumedSessions) : 0,
+      paidSessions: gs.paidSessions != null ? Number(gs.paidSessions) : 0,
+    }));
 
   const totalPaid = (student.payments as any[]).reduce((sum: number, p: any) => sum + Number(p.amountPaid), 0);
   const totalDue = (student.payments as any[]).reduce((sum: number, p: any) => sum + Number(p.amountDue), 0);
   const currentDebt = totalDue - totalPaid;
+
+  const paidGroupMonths = new Set(
+    (student.payments as any[])
+      .filter((p: any) => p.status === "paid" && p.groupId)
+      .map((p: any) => `${p.groupId}:${String(p.month).slice(0, 7)}`)
+  );
+  const paidMonthsAnyGroup = new Set(
+    (student.payments as any[])
+      .filter((p: any) => p.status === "paid" && !p.groupId)
+      .map((p: any) => String(p.month).slice(0, 7))
+  );
 
   return (
     <div className="space-y-6 p-4 md:p-6">
@@ -119,7 +129,31 @@ export default async function StudentDetailPage({
             <div className="flex flex-wrap gap-2">
               {groups.map((g) => (
                 <Link key={g.id} href={`/groups/${g.id}`}>
-                  <Badge variant="secondary" className="cursor-pointer hover:bg-accent">{g.name}</Badge>
+                  <Badge variant="secondary" className="cursor-pointer hover:bg-accent">
+                    {g.name}
+{g.sessionsIncluded != null && g.sessionsIncluded > 0 && (() => {
+                        const d = sessionCounterDisplay(g.sessionsIncluded, g.consumedSessions, g.paidSessions);
+                        if (d.state === "hidden") return null;
+                        if (d.state === "none") {
+                          return (
+                            <span className="mr-1.5 inline-flex items-center rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                              {t("students.consumed_sessions_none")}
+                            </span>
+                          );
+                        }
+                        return (
+                          <span
+                            className={
+                              d.exhausted
+                                ? "mr-1.5 inline-flex items-center rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive"
+                                : "mr-1.5 inline-flex items-center rounded-full bg-success/15 px-1.5 py-0.5 text-[10px] font-medium text-success"
+                            }
+                          >
+                            {d.consumed} / {d.paid}
+                          </span>
+                        );
+                      })()}
+                  </Badge>
                 </Link>
               ))}
             </div>
@@ -138,46 +172,40 @@ export default async function StudentDetailPage({
           <div className="flex justify-end">
             <RecordPaymentDialog studentId={student.id} studentName={student.fullName} size="sm" />
           </div>
-          {student.payments.length === 0 ? (
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">{t("students.no_payments")}</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <Card>
-              <CardContent className="pt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">{t("students.consumed_sessions_label")}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {groups.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{t("students.no_groups_enrolled")}</p>
+              ) : (
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>{t("payments.month")}</TableHead>
-                      <TableHead>{t("payments.amount_due")}</TableHead>
-                      <TableHead>{t("payments.amount_paid")}</TableHead>
-                      <TableHead>{t("payments.status")}</TableHead>
-                      <TableHead>{t("payments.paid_on")}</TableHead>
+                      <TableHead>{t("students.group_label")}</TableHead>
+                      <TableHead>{t("students.consumed_sessions_label")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(student.payments as any[]).map((p: any) => (
-                      <TableRow key={p.id}>
-                        <TableCell>{formatDate(p.month, "MMM yyyy")}</TableCell>
-                        <TableCell className="font-medium">{fmt(Number(p.amountDue))}</TableCell>
-                        <TableCell>{fmt(Number(p.amountPaid))}</TableCell>
+                    {groups.map((g) => (
+                      <TableRow key={g.id}>
+                        <TableCell className="font-medium">{g.name}</TableCell>
                         <TableCell>
-                          <Badge variant={paymentStatusVariant[p.status] || "secondary"}>
-                            {t(`payments.${p.status}`)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {p.paidAt ? formatDate(p.paidAt) : "\u2014"}
+{(() => {
+                          const d = sessionCounterDisplay(g.sessionsIncluded, g.consumedSessions, g.paidSessions);
+                          if (d.state === "hidden") return <span className="text-sm text-muted-foreground">\u2014</span>;
+                          if (d.state === "none") return <span className="text-sm text-muted-foreground">{t("students.consumed_sessions_none")}</span>;
+                          return <Badge variant={d.exhausted ? "destructive" : "success"}>{d.consumed} / {d.paid}</Badge>;
+                        })()}
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
-              </CardContent>
-            </Card>
-          )}
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="attendance" className="mt-4">
@@ -193,18 +221,37 @@ export default async function StudentDetailPage({
                   <TableHeader>
                     <TableRow>
                       <TableHead>{t("students.date_header")}</TableHead>
+                      <TableHead>{t("students.group_label")}</TableHead>
                       <TableHead>{t("students.status_header")}</TableHead>
+                      <TableHead>{t("payments.paid")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(student.attendances as any[]).map((a: any) => (
-                      <TableRow key={a.id}>
-                        <TableCell>{a.session ? formatDate(a.session.sessionDate) : "—"}</TableCell>
-                        <TableCell>
-                          <Badge variant={statusVariant[a.status]}>{t(`attendance.${a.status}`)}</Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {(student.attendances as any[]).map((a: any) => {
+                      const sessionDate = a.session ? a.session.sessionDate : null;
+                      const monthKey = sessionDate ? String(sessionDate).slice(0, 7) : null;
+                      const gid = a.session?.groupId ?? null;
+                      const paid = Boolean(
+                        (gid && monthKey && paidGroupMonths.has(`${gid}:${monthKey}`))
+                        || (monthKey && paidMonthsAnyGroup.has(monthKey))
+                      );
+                      return (
+                        <TableRow key={a.id}>
+                          <TableCell>{sessionDate ? formatDate(sessionDate) : "—"}</TableCell>
+                          <TableCell>
+                            {a.session?.groupName ? <Badge variant="secondary">{a.session.groupName}</Badge> : "—"}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={statusVariant[a.status]}>{t(`attendance.${a.status}`)}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={paid ? "success" : "destructive"}>
+                              {paid ? t("payments.paid") : t("payments.unpaid")}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               )}
@@ -216,7 +263,6 @@ export default async function StudentDetailPage({
           <Card>
             <CardContent className="grid grid-cols-1 gap-4 pt-6 sm:grid-cols-2">
               <Info label={t("students.phone_label")} value={student.phone} />
-              <Info label={t("students.email")} value={student.email} />
               <Info label={t("students.address")} value={student.address} />
               <Info label={t("students.notes")} value={student.notes} />
             </CardContent>

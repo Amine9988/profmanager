@@ -26,8 +26,8 @@ export default async function AttendancePage() {
     <div className="space-y-6 p-4 md:p-6" dir={direction}>
       <h1 className="text-2xl font-bold">{t("attendance.title")}</h1>
 
-      <Tabs defaultValue="sessions">
-        <TabsList>
+      <Tabs defaultValue="sessions" dir="rtl">
+        <TabsList dir="rtl">
           <TabsTrigger value="sessions">{t("attendance.upcoming")}</TabsTrigger>
           <TabsTrigger value="register">{t("attendance.register")}</TabsTrigger>
         </TabsList>

@@ -7,9 +7,11 @@ import { AlertTriangle, Loader2, CheckCircle2 } from "lucide-react";
 
 export function ResetButton() {
   const [step, setStep] = useState<"idle" | "confirm" | "loading" | "done">("idle");
+  const [error, setError] = useState<string | null>(null);
   const t = useT();
 
   async function handleReset() {
+    setError(null);
     setStep("loading");
     try {
       const res = await fetch("/api/reset", { method: "POST" });
@@ -17,12 +19,12 @@ export function ResetButton() {
         setStep("done");
         setTimeout(() => { window.location.href = "/overview"; }, 2000);
       } else {
-        alert(t("common.error"));
-        setStep("idle");
+        setError(t("common.error"));
+        setStep("confirm");
       }
     } catch {
-      alert(t("common.error"));
-      setStep("idle");
+      setError(t("common.error"));
+      setStep("confirm");
     }
   }
 
@@ -44,10 +46,13 @@ export function ResetButton() {
           <Button variant="destructive" onClick={handleReset}>
             {t("settings.reset.confirm")}
           </Button>
-          <Button variant="outline" onClick={() => setStep("idle")}>
+          <Button variant="outline" onClick={() => { setError(null); setStep("idle"); }}>
             {t("settings.reset.cancel")}
           </Button>
         </div>
+        {error && (
+          <p className="mt-3 text-sm text-destructive">{error}</p>
+        )}
       </div>
     );
   }

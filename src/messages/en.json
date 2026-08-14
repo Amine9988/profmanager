@@ -397,7 +397,10 @@
     "selected_count": "{count} of {total} selected",
     "total_students": "{count} student(s)",
     "bulk_delete_success": "{count} student(s) deleted successfully",
-    "bulk_print": "Print cards"
+    "bulk_print": "Print cards",
+    "remaining_sessions_label": "Remaining sessions",
+    "consumed_sessions_label": "Sessions used",
+    "consumed_sessions_none": "No paid sessions"
   },
   "groups": {
     "teacher": "Teacher",
@@ -419,6 +422,11 @@
     "per_session": "Per session",
     "monthly": "Monthly",
     "package": "Package",
+    "sessions_included_label": "Sessions included in the payment",
+    "sessions_included_placeholder": "e.g. 8",
+    "sessions_included_hint": "e.g. 2500 DZD for 8 sessions. Once the sessions run out, the student must pay again.",
+    "sessions_short": "sessions",
+    "color_label": "Group color",
     "create_button": "Create group",
     "creating": "Creating...",
     "created_success": "Group created successfully",
@@ -488,7 +496,7 @@
     "students_label": "Students",
     "no_groups_desc": "Create your first group to start organizing your classes.",
     "recent_sessions": "Recent sessions",
-    "session_completed": "Completed",
+        "session_completed": "Completed",
     "session_cancelled": "Cancelled",
     "session_scheduled": "Scheduled",
     "updated_success": "Group updated successfully",
@@ -624,6 +632,8 @@
     "next_month": "Next month",
     "current_month": "Current month",
     "amount": "Amount",
+    "all_time": "All periods",
+    "bulk_delete_disabled_hint": "Bulk delete is only available when viewing a specific month",
     "amount_due": "Amount due",
     "amount_paid": "Paid",
     "paid_on": "Paid on",
@@ -769,7 +779,17 @@
       "cancel": "Cancel",
       "loading": "Resetting system...",
       "success": "System reset successfully"
-    }
+    },
+    "export_section": "Export registers to Excel",
+    "export_section_desc": "Download your registers as a well-organized Excel file.",
+    "export_cash": "Cash register",
+    "export_cash_desc": "All cash movements",
+    "export_teachers": "Teachers register",
+    "export_teachers_desc": "Teachers and their subjects",
+    "export_students": "Students register",
+    "export_students_desc": "Students and their fees",
+    "export_success": "Excel file downloaded.",
+    "export_error": "Failed to download the Excel file."
   },
   "validation": {
     "required": "The field {field} is required.",
@@ -1096,7 +1116,17 @@
     "fullName": "Full name",
     "teaching_log": "Teaching Log",
     "taught_sessions": "Taught sessions count",
-    "no_taught_sessions": "No taught sessions yet"
+    "no_taught_sessions": "No taught sessions yet",
+    "students_present": "{count} present",
+    "dues": "Dues",
+    "all_period": "All time",
+    "total_due": "Total due",
+    "total_paid": "Paid",
+    "remaining": "Remaining",
+    "no_dues_sessions": "No finished sessions in this period",
+    "pay_remaining": "Pay dues ({amount})",
+    "monthly_note": "Monthly salary: {months} months × set amount",
+    "dues_hint": "Remaining amount: {amount}"
   },
   "levels": {
     "title": "Levels",
@@ -1168,7 +1198,8 @@
     "reveal": "Show amounts",
     "hide": "Hide",
     "pin_required": "Enter the password",
-    "wrong_password": "Incorrect password"
+    "wrong_password": "Incorrect password",
+    "all_time": "All periods"
   },
   "calendar": {
     "title": "Calendar",
@@ -1180,7 +1211,10 @@
     "type_session": "Session",
     "type_subscription_expiry": "Subscription expiry",
     "type_payment_due": "Payment due",
-    "type_absence": "Absence"
+    "type_absence": "Absence",
+    "payment_due_title": "Payment due: {name}",
+    "prev_month": "Previous month",
+    "next_month": "Next month"
   },
   "weekly_program": {
     "title": "Weekly Program",

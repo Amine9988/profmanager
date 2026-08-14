@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { archiveStudent, restoreStudent, deleteStudent } from "@/server/actions/students";
+import { deleteStudent } from "@/server/actions/students";
 import Link from "next/link";
 import { StudentEditDialog } from "@/components/students/student-edit-dialog";
 import { CardDialog } from "@/components/students/card-dialog";
@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { useI18n } from "@/lib/i18n";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Archive, RotateCcw, Trash2, Search, X, Printer } from "lucide-react";
+import { Trash2, Search, X, Printer } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { drawCardToCanvas } from "@/components/students/card-dialog";
 import { jsPDF } from "jspdf";
@@ -36,13 +36,10 @@ export function StudentsTable({ data }: { data: StudentRow[] }) {
   const { t, direction } = useI18n();
   const router = useRouter();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [filterStatus, setFilterStatus] = useState<"all" | "active" | "archived">("active");
   const [search, setSearch] = useState("");
   const align = direction === "rtl" ? "right" : "left";
 
   const filtered = data.filter((s) => {
-    if (filterStatus === "active" && s.status !== "active") return false;
-    if (filterStatus === "archived" && s.status !== "archived") return false;
     if (search) {
       const q = search.toLowerCase();
       const match =
@@ -135,25 +132,6 @@ export function StudentsTable({ data }: { data: StudentRow[] }) {
     }
   }
 
-  async function handleArchive(id: string) {
-    const res = await archiveStudent(id);
-    if (res.success) {
-      toast.success(t("students.archived_success"));
-      router.refresh();
-    } else {
-      toast.error(res.error ?? t("common.error"));
-    }
-  }
-
-  async function handleRestore(id: string) {
-    const res = await restoreStudent(id);
-    if (res.success) {
-      toast.success("Étudiant restauré");
-      router.refresh();
-    } else {
-      toast.error(res.error ?? "Erreur");
-    }
-  }
   return (
     <div className="w-full animate-fade-in" dir={direction}>
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
@@ -166,22 +144,6 @@ export function StudentsTable({ data }: { data: StudentRow[] }) {
             onChange={(e) => setSearch(e.target.value)}
             className="pl-8 h-9 text-sm"
           />
-        </div>
-        <div className="inline-flex items-center rounded-lg border p-0.5 bg-muted/50">
-          {(["active", "archived", "all"] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => { setFilterStatus(f); setSelectedIds([]); }}
-              className={cn(
-                "px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200",
-                filterStatus === f
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {f === "active" ? t("students.status_active") : f === "archived" ? t("students.archived") : t("common.all")}
-            </button>
-          ))}
         </div>
       </div>
 
@@ -268,39 +230,28 @@ export function StudentsTable({ data }: { data: StudentRow[] }) {
                     {student.phone || "—"}
                   </td>
                   <td className="px-3 py-3">
-                    {student.status === "archived" ? (
-                      <div className="flex justify-center">
-                        <Button variant="outline" size="sm" onClick={() => handleRestore(student.id)}>
-                          <RotateCcw className="size-3.5 mr-1" />{t("students.restore")}
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-center gap-1">
-                        <StudentEditDialog
-                          student={{
-                            id: student.id,
-                            fullName: student.fullName,
-                            gradeLevel: student.gradeLevel,
-                            schoolName: student.schoolName,
-                            phone: student.phone,
-                            fatherPhone: student.fatherPhone,
-                            email: student.email,
-                            address: student.address,
-                            notes: student.notes,
-                            monthlyFee: student.monthlyFee,
-                            subscriptionStart: student.subscriptionStart ? new Date(student.subscriptionStart) : null,
-                          }}
-                        />
-                        <CardDialog studentId={student.id} />
-                        <StudentRecordDialog studentId={student.id} />
-                        <Button variant="ghost" size="sm" onClick={() => handleArchive(student.id)} title={t("common.archive")}>
-                          <Archive className="size-3.5 text-muted-foreground" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleDeleteOne(student.id)} title={t("common.delete")}>
-                          <Trash2 className="size-3.5 text-destructive" />
-                        </Button>
-                      </div>
-                    )}
+                    <div className="flex items-center justify-center gap-1">
+                      <StudentEditDialog
+                        student={{
+                          id: student.id,
+                          fullName: student.fullName,
+                          gradeLevel: student.gradeLevel,
+                          schoolName: student.schoolName,
+                          phone: student.phone,
+                          fatherPhone: student.fatherPhone,
+                          email: student.email,
+                          address: student.address,
+                          notes: student.notes,
+                          monthlyFee: student.monthlyFee,
+                          subscriptionStart: student.subscriptionStart ? new Date(student.subscriptionStart) : null,
+                        }}
+                      />
+                      <CardDialog studentId={student.id} />
+                      <StudentRecordDialog studentId={student.id} />
+                      <Button variant="ghost" size="sm" onClick={() => handleDeleteOne(student.id)} title={t("common.delete")}>
+                        <Trash2 className="size-3.5 text-destructive" />
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}

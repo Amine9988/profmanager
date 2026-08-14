@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { RecordPaymentDialog } from "@/components/payments/record-payment-dialog";
 import { StudentRecordDialog } from "@/components/students/student-record-dialog";
 import type { BarcodeSummary } from "@/server/actions/barcode";
+import { sessionCounterDisplay, formatDateKey } from "@/lib/utils";
 
 function formatCurrency(v: number) {
   return v.toLocaleString("fr-DZ") + " د.ج";
@@ -45,12 +46,39 @@ export function SummaryView({ summary, attView, attendanceLoading, onMarkAttenda
             </div>
           </div>
 
+          {summary.groupCredits.filter((c) => c.sessionsIncluded != null && c.sessionsIncluded > 0).length > 0 && (
+            <div className="mt-3 space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground">الحصص المستهلكة:</p>
+              {summary.groupCredits
+                .filter((c) => c.sessionsIncluded != null && c.sessionsIncluded > 0)
+                .map((c) => {
+                  const d = sessionCounterDisplay(c.sessionsIncluded, c.consumedSessions, c.paidSessions);
+                  return (
+                    <div key={c.groupId} className="flex items-center justify-between p-3 rounded-lg border">
+                      <span className="flex items-center gap-2 text-sm font-medium">
+                        <span className="size-2.5 rounded-full shrink-0" style={{ background: c.color || "#888" }} />
+                        {c.groupName}
+                      </span>
+                      {d.state === "counter" ? (
+                        <span className={`text-sm font-bold ${d.exhausted ? "text-destructive" : "text-success"}`}>
+                          {d.consumed} من {d.paid}
+                          {d.exhausted && <span className="block text-[10px] font-normal text-destructive">انتهت الحصص — يجب الدفع</span>}
+                        </span>
+                      ) : (
+                        <span className="text-sm font-semibold text-muted-foreground">لا توجد حصص مدفوعة</span>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+
           {summary.lastPayment && (
             <div className="mt-3 p-3 rounded-lg bg-muted/30 text-sm">
               <span className="text-muted-foreground text-[11px]">آخر دفعة: </span>
               <span className="font-medium">{formatCurrency(summary.lastPayment.amountPaid)}</span>
               <span className="text-muted-foreground mx-1">|</span>
-              <span className="text-muted-foreground text-[11px]">{summary.lastPayment.month}</span>
+              <span className="text-muted-foreground text-[11px]">{formatDateKey(summary.lastPayment.date)}</span>
             </div>
           )}
 
@@ -65,14 +93,17 @@ export function SummaryView({ summary, attView, attendanceLoading, onMarkAttenda
               {summary.todaySessions.map((sess) => (
                 <div key={sess.sessionId} className="flex items-center justify-between p-3 rounded-lg border">
                   <div>
-                    <p className="text-sm font-medium">{sess.groupName}</p>
+                    <p className="flex items-center gap-2 text-sm font-medium">
+                      <span className="size-2.5 rounded-full shrink-0" style={{ background: sess.color || "#888" }} />
+                      {sess.groupName}
+                    </p>
                     <p className="text-[11px] text-muted-foreground">
                       {sess.startTime || "?"} - {sess.endTime || "?"}
                     </p>
                   </div>
                   {sess.attendanceStatus ? (
-                    <Badge variant={sess.attendanceStatus === "present" ? "success" : "secondary"}>
-                      {sess.attendanceStatus === "present" ? "حاضر" : sess.attendanceStatus === "late" ? "متأخر" : "مسجل"}
+                    <Badge variant={sess.attendanceStatus === "present" ? "success" : sess.attendanceStatus === "late" ? "warning" : sess.attendanceStatus === "absent" ? "destructive" : "secondary"}>
+                      {sess.attendanceStatus === "present" ? "حاضر" : sess.attendanceStatus === "late" ? "متأخر" : sess.attendanceStatus === "absent" ? "غائب" : "مسجل"}
                     </Badge>
                   ) : (
                     <Button
@@ -128,7 +159,10 @@ export function SummaryView({ summary, attView, attendanceLoading, onMarkAttenda
               {attView.sessions.map((sess) => (
                 <div key={sess.id} className="flex items-center justify-between p-3 rounded-lg border">
                   <div>
-                    <p className="text-sm font-medium">{sess.group?.name || sess.group?.subjects?.name || "مجموعة"}</p>
+                    <p className="flex items-center gap-2 text-sm font-medium">
+                      <span className="size-2.5 rounded-full shrink-0" style={{ background: sess.group?.color || sess.group?.subjects?.color || "#888" }} />
+                      {sess.group?.name || sess.group?.subjects?.name || "مجموعة"}
+                    </p>
                     <p className="text-[11px] text-muted-foreground">
                       {new Date(sess.sessionDate + "T00:00:00").toLocaleDateString("ar-DZ", {
                         weekday: "long",
@@ -140,8 +174,8 @@ export function SummaryView({ summary, attView, attendanceLoading, onMarkAttenda
                     </p>
                   </div>
                   {sess.attendanceStatus ? (
-                    <Badge variant={sess.attendanceStatus === "present" ? "success" : "secondary"}>
-                      {sess.attendanceStatus === "present" ? "حاضر" : sess.attendanceStatus === "late" ? "متأخر" : "مسجل"}
+                    <Badge variant={sess.attendanceStatus === "present" ? "success" : sess.attendanceStatus === "late" ? "warning" : sess.attendanceStatus === "absent" ? "destructive" : "secondary"}>
+                      {sess.attendanceStatus === "present" ? "حاضر" : sess.attendanceStatus === "late" ? "متأخر" : sess.attendanceStatus === "absent" ? "غائب" : "مسجل"}
                     </Badge>
                   ) : (
                     <Button

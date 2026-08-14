@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTenantContext } from "@/lib/auth";
+import { resetSessionCreditsOnPaymentDelete } from "@/lib/payments/utils";
 
 export async function DELETE(request: NextRequest) {
   try {
@@ -10,13 +11,13 @@ export async function DELETE(request: NextRequest) {
     const { data: payments } = studentIds && month
       ? await supabase
           .from("payments")
-          .select("id, amountDue, amountPaid, month, studentId, students(fullName)")
+          .select("id, amountDue, amountPaid, month, studentId, groupId, students(fullName)")
           .in("studentId", studentIds)
           .eq("month", month)
           .eq("tenantId", tenantId)
       : await supabase
           .from("payments")
-          .select("id, amountDue, amountPaid, month, studentId, students(fullName)")
+          .select("id, amountDue, amountPaid, month, studentId, groupId, students(fullName)")
           .in("id", ids || [])
           .eq("tenantId", tenantId);
 
@@ -40,6 +41,16 @@ export async function DELETE(request: NextRequest) {
     }
 
     await supabase.from("payments").delete().in("id", payIds).eq("tenantId", tenantId);
+
+    // After deleting, reset unused session credits for any affected
+    // student+group whose paid payments are now gone.
+    const seen = new Set<string>();
+    for (const p of payments) {
+      const key = `${p.studentId}:${p.groupId ?? "null"}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      await resetSessionCreditsOnPaymentDelete({ supabase, tenantId, studentId: p.studentId, groupId: p.groupId ?? null });
+    }
 
     const auditLogs = payments.map((p: Record<string, unknown>) => {
       const raw = p.students as unknown;

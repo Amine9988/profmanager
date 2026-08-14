@@ -34,6 +34,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return !isNaN(endMs) && endMs < now;
     });
 
+    const sessionIds = taught.map((s: any) => s.id);
+    const presentBySession = new Map<string, number>();
+    if (sessionIds.length > 0) {
+      const { data: attendances } = await supabase
+        .from("attendances")
+        .select("sessionId, status")
+        .eq("tenantId", tenantId)
+        .in("sessionId", sessionIds);
+      for (const a of attendances || []) {
+        if (a.status === "present" || a.status === "late") {
+          presentBySession.set(a.sessionId, (presentBySession.get(a.sessionId) || 0) + 1);
+        }
+      }
+    }
+
     const result = toCamelArray(taught).map((s: any) => {
       const group = Array.isArray(s.groups) ? s.groups[0] : s.groups;
       return {
@@ -45,6 +60,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         type: s.type,
         groupName: group?.name || null,
         subjectName: group?.subjects?.name ?? (Array.isArray(group?.subjects) ? group.subjects[0]?.name : null) ?? null,
+        presentCount: presentBySession.get(s.id) || 0,
       };
     });
 

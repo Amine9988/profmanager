@@ -397,7 +397,10 @@
     "selected_count": "{count} من {total} محدد",
     "total_students": "{count} تلميذ",
     "bulk_delete_success": "تم حذف {count} تلميذ بنجاح",
-    "bulk_print": "طباعة البطاقات"
+    "bulk_print": "طباعة البطاقات",
+    "remaining_sessions_label": "الحصص المتبقية",
+    "consumed_sessions_label": "الحصص المستهلكة",
+    "consumed_sessions_none": "لا توجد حصص مدفوعة"
   },
   "groups": {
     "teacher": "الأستاذ",
@@ -419,6 +422,11 @@
     "per_session": "بالجلسة",
     "monthly": "شهري",
     "package": "باقة",
+    "sessions_included_label": "عدد الحصص المشمولة في الدفعة",
+    "sessions_included_placeholder": "مثال: 8",
+    "sessions_included_hint": "مثال: سعر 2500 دج مقابل 8 حصص. بعد انتهاء الحصص يجب أن يدفع التلميذ مجدداً.",
+    "sessions_short": "حصص",
+    "color_label": "لون المجموعة",
     "create_button": "إنشاء المجموعة",
     "creating": "جارٍ الإنشاء...",
     "created_success": "تم إنشاء المجموعة بنجاح",
@@ -484,11 +492,10 @@
     "active": "نشط",
     "archived": "مؤرشف",
     "students_count": "{count}/{max} طالب",
-    "slots_count": "{count} موعد(ة) أسبوعي(ة)",
-    "students_label": "الطلاب",
+    "slots_count": "{count} موعد(ة) أسبوعي(ة)",    "students_label": "الطلاب",
     "no_groups_desc": "أنشئ أول مجموعة للبدء في تنظيم دروسك.",
     "recent_sessions": "آخر الحصص",
-    "session_completed": "منتهية",
+        "session_completed": "منتهية",
     "session_cancelled": "ملغية",
     "session_scheduled": "مجدولة",
     "updated_success": "تم تعديل المجموعة بنجاح",
@@ -624,6 +631,8 @@
     "next_month": "الشهر التالي",
     "current_month": "الشهر الحالي",
     "amount": "المبلغ",
+    "all_time": "كل الأوقات",
+    "bulk_delete_disabled_hint": "الحذف الجماعي متاح فقط عند عرض شهر محدد",
     "amount_due": "المبلغ المستحق",
     "amount_paid": "المدفوع",
     "paid_on": "تاريخ الدفع",
@@ -769,7 +778,17 @@
       "cancel": "إلغاء",
       "loading": "جاري إعادة التهيئة...",
       "success": "تمت إعادة التهيئة بنجاح"
-    }
+    },
+    "export_section": "تصدير الجداول إلى Excel",
+    "export_section_desc": "حمّل سجلاتك بصيغة Excel منظمة واحترافية.",
+    "export_cash": "سجل الصندوق",
+    "export_cash_desc": "حركة الصندوق كاملة",
+    "export_teachers": "سجل الأساتذة",
+    "export_teachers_desc": "الأساتذة وموادهم",
+    "export_students": "سجل التلاميذ",
+    "export_students_desc": "التلاميذ ورسومهم",
+    "export_success": "تم تحميل ملف Excel بنجاح.",
+    "export_error": "فشل تحميل ملف Excel."
   },
   "validation": {
     "required": "حقل {field} مطلوب.",
@@ -1096,7 +1115,17 @@
     "fullName": "الاسم",
     "teaching_log": "سجل التدريس",
     "taught_sessions": "عدد الحصص المدروسة",
-    "no_taught_sessions": "لا توجد حصص مدروسة بعد"
+    "no_taught_sessions": "لا توجد حصص مدروسة بعد",
+    "students_present": "التلاميذ الحاضرون: {count}",
+    "dues": "المستحقات",
+    "all_period": "كل المدة",
+    "total_due": "إجمالي المستحق",
+    "total_paid": "المدفوع",
+    "remaining": "الباقي",
+    "no_dues_sessions": "لا توجد حصص منتهية في هذه الفترة",
+    "pay_remaining": "دفع المستحقات ({amount})",
+    "monthly_note": "الراتب الشهري: {months} شهر × المبلغ المحدد",
+    "dues_hint": "المبلغ المتبقي: {amount}"
   },
   "levels": {
     "title": "المستويات",
@@ -1168,7 +1197,8 @@
     "reveal": "إظهار المبالغ",
     "hide": "إخفاء",
     "pin_required": "أدخل كلمة المرور",
-    "wrong_password": "كلمة مرور غير صحيحة"
+    "wrong_password": "كلمة مرور غير صحيحة",
+    "all_time": "كل الأوقات"
   },
   "calendar": {
     "title": "التقويم",
@@ -1180,7 +1210,10 @@
     "type_session": "حصة",
     "type_subscription_expiry": "انتهاء الاشتراك",
     "type_payment_due": "دفعة مستحقة",
-    "type_absence": "غياب"
+    "type_absence": "غياب",
+    "payment_due_title": "دفعة مستحقة: {name}",
+    "prev_month": "الشهر السابق",
+    "next_month": "الشهر التالي"
   },
   "weekly_program": {
     "title": "البرنامج الأسبوعي",

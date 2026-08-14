@@ -1,7 +1,7 @@
 import { getTenantContext } from "@/lib/auth";
 import { headers } from "next/headers";
 import { submitScan } from "@/server/scan-sessions";
-import { formatDate } from "@/lib/utils";
+import { formatDateKey } from "@/lib/utils";
 import { StudentPrintButton } from "./print-button";
 import { StudentRelay } from "./relay";
 
@@ -110,7 +110,7 @@ export default async function StudentPublicPage({
           </div>
           {lastPayment && (
             <div className="border-t border-slate-100 pt-3 text-sm text-slate-600 space-y-1">
-              <p>آخر دفعة: {new Date(lastPayment.month).toLocaleDateString("ar-DZ", { year: "numeric", month: "long" })} — {lastPayment.amountPaid.toLocaleString()} د.ج</p>
+              <p>آخر دفعة: {formatDateKey(lastPayment.paidAt || lastPayment.createdAt) || new Date(lastPayment.month).toLocaleDateString("ar-DZ", { year: "numeric", month: "long" })} — {lastPayment.amountPaid.toLocaleString()} د.ج</p>
               {nextDueDate && (
                 <p>الدفعة القادمة: {new Date(nextDueDate + "-01").toLocaleDateString("ar-DZ", { year: "numeric", month: "long" })}</p>
               )}

@@ -9,9 +9,9 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, FileText, GraduationCap, School, Phone, Mail, Users, CreditCard, CalendarCheck, CalendarX2, Wallet, MessageSquare } from "lucide-react";
+import { Loader2, FileText, GraduationCap, School, Phone, Users, CreditCard, CalendarCheck, CalendarX2, MessageSquare } from "lucide-react";
 import { useT, useI18n } from "@/lib/i18n";
-import { formatCurrency, formatDate, initials } from "@/lib/utils";
+import { formatCurrency, formatDate, initials, sessionCounterDisplay } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 
@@ -33,12 +33,17 @@ type RecordData = {
   };
   groupStudents: {
     id: string;
-    group: { id: string; name: string; pricePerSession: number } | null;
+    sessionsIncluded: number | null;
+    consumedSessions: number;
+    paidSessions: number;
+    group: { id: string; name: string; pricePerSession: number; color: string | null } | null;
     subject: { id: string; name: string; color: string | null } | null;
   }[];
   payments: {
     id: string;
     month: string;
+    groupId: string | null;
+    groupName: string | null;
     amountDue: number;
     amountPaid: number;
     status: string;
@@ -49,10 +54,14 @@ type RecordData = {
   attendances: {
     id: string;
     status: string;
+    sessionStatus: string | null;
     markedAt: string | null;
     sessionDate: string | null;
     startTime: string | null;
     endTime: string | null;
+    groupName: string | null;
+    groupColor: string | null;
+    paid: boolean;
   }[];
   stats: {
     totalDue: number;
@@ -86,7 +95,7 @@ export function StudentRecordDialog({ studentId, trigger }: { studentId: string;
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    if (!open || data) return;
+    if (!open) return;
     setLoading(true);
     setLoadError(false);
     fetch(`/api/students/${studentId}/record`)
@@ -96,10 +105,7 @@ export function StudentRecordDialog({ studentId, trigger }: { studentId: string;
       })
       .then((d) => { setData(d); setLoading(false); })
       .catch(() => { setLoading(false); setLoadError(true); });
-  }, [open, studentId, data]);
-
-  const s = data?.student;
-  const st = data?.stats;
+  }, [open, studentId]);
 
   return (
     <Dialog open={open} onOpenChange={(v) => {
@@ -170,8 +176,6 @@ function RecordContent({ data, t }: { data: RecordData; t: (key: string) => stri
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <InfoCard icon={<Phone className="size-4" />} label={t("students.phone_label")} value={s.phone} dir="ltr" />
         <InfoCard icon={<Phone className="size-4" />} label={t("students.father_phone_label")} value={s.fatherPhone} dir="ltr" />
-        <InfoCard icon={<Mail className="size-4" />} label={t("students.email")} value={s.email} dir="ltr" />
-        <InfoCard icon={<Wallet className="size-4" />} label={t("students.subscription_label")} value={s.subscriptionStart ? formatDate(s.subscriptionStart) : null} />
       </section>
 
       {/* Financial summary */}
@@ -179,16 +183,14 @@ function RecordContent({ data, t }: { data: RecordData; t: (key: string) => stri
         <h3 className="mb-2 text-sm font-semibold text-muted-foreground flex items-center gap-1.5">
           <CreditCard className="size-4" /> {t("payments.finance_summary")}
         </h3>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatBox label={t("payments.monthly_fee")} value={formatCurrency(s.monthlyFee)} />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <StatBox label={t("payments.total_paid")} value={formatCurrency(st.totalPaid)} className="text-green-600" />
           <StatBox label={t("payments.total_due")} value={formatCurrency(st.totalDue)} />
           <StatBox
             label={t("payments.current_debt")}
             value={formatCurrency(st.totalRemaining)}
-            className={st.totalRemaining > 0 ? "text-destructive" : "text-green-600"}
+            className="text-destructive"
           />
-          <StatBox label={t("payments.advance")} value={formatCurrency(s.advanceBalance)} className="text-blue-600" />
         </div>
       </section>
 
@@ -203,8 +205,30 @@ function RecordContent({ data, t }: { data: RecordData; t: (key: string) => stri
           <div className="flex flex-wrap gap-2">
             {data.groupStudents.map((gs) => (
               <Badge key={gs.id} variant="secondary" className="gap-1.5 py-1">
-                {gs.subject && <span className="size-2 rounded-full" style={{ background: gs.subject.color || "#888" }} />}
+                <span className="size-2 rounded-full" style={{ background: gs.group?.color || gs.subject?.color || "#888" }} />
                 {gs.group?.name ?? "?"}
+{(() => {
+                  const d = sessionCounterDisplay(gs.sessionsIncluded, gs.consumedSessions, gs.paidSessions);
+                  if (d.state === "hidden") return null;
+                  if (d.state === "none") {
+                    return (
+                      <span className="inline-flex items-center rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        {t("students.consumed_sessions_none")}
+                      </span>
+                    );
+                  }
+                  return (
+                    <span
+                      className={
+                        d.exhausted
+                          ? "inline-flex items-center rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive"
+                          : "inline-flex items-center rounded-full bg-success/15 px-1.5 py-0.5 text-[10px] font-medium text-success"
+                      }
+                    >
+                      {d.consumed} / {d.paid}
+                    </span>
+                  );
+                })()}
               </Badge>
             ))}
           </div>
@@ -219,7 +243,6 @@ function RecordContent({ data, t }: { data: RecordData; t: (key: string) => stri
         />
         <StatBox label={t("attendance.present")} value={String(st.presentCount)} className="text-green-600" />
         <StatBox label={t("attendance.absent")} value={String(st.absentCount)} className="text-destructive" />
-        <StatBox label={t("attendance.excused")} value={String(st.excusedCount)} className="text-secondary" />
       </section>
 
       {/* Attendance history */}
@@ -239,7 +262,9 @@ function RecordContent({ data, t }: { data: RecordData; t: (key: string) => stri
                 <tr>
                   <th className="px-3 py-2 text-start font-semibold">{t("students.date_header")}</th>
                   <th className="px-3 py-2 text-start font-semibold">{t("payments.month")}</th>
+                  <th className="px-3 py-2 text-start font-semibold">{t("students.group_label")}</th>
                   <th className="px-3 py-2 text-start font-semibold">{t("students.status_header")}</th>
+                  <th className="px-3 py-2 text-start font-semibold">{t("payments.paid")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -250,7 +275,19 @@ function RecordContent({ data, t }: { data: RecordData; t: (key: string) => stri
                       {[a.startTime, a.endTime].filter(Boolean).join(" – ") || "—"}
                     </td>
                     <td className="px-3 py-2">
-                      <Badge variant={statusVariant[a.status] || "secondary"}>{t(`attendance.${a.status}`)}</Badge>
+                      {a.groupName ? <Badge variant="secondary" className="gap-1.5">{a.groupColor && <span className="size-2 rounded-full" style={{ background: a.groupColor }} />}{a.groupName}</Badge> : "—"}
+                    </td>
+                    <td className="px-3 py-2">
+                      {a.sessionStatus === "cancelled" ? (
+                        <Badge variant="secondary">{t("attendance.cancelled")}</Badge>
+                      ) : (
+                        <Badge variant={statusVariant[a.status] || "secondary"}>{t(`attendance.${a.status}`)}</Badge>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <Badge variant={a.paid ? "success" : "destructive"}>
+                        {a.paid ? t("payments.paid") : t("payments.unpaid")}
+                      </Badge>
                     </td>
                   </tr>
                 ))}
@@ -260,35 +297,41 @@ function RecordContent({ data, t }: { data: RecordData; t: (key: string) => stri
         )}
       </section>
 
-      {/* Payments history */}
+      {/* Remaining sessions */}
       <section>
         <h3 className="mb-2 text-sm font-semibold text-muted-foreground flex items-center gap-1.5">
-          <CalendarX2 className="size-4" /> {t("students.payments_tab")}
+          <CalendarX2 className="size-4" /> {t("students.consumed_sessions_label")}
         </h3>
-        {data.payments.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t("students.no_payments")}</p>
+        {data.groupStudents.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t("students.no_groups_enrolled")}</p>
         ) : (
           <div className="max-h-44 overflow-y-auto rounded-lg border">
             <table className="w-full text-sm">
               <thead className="bg-muted/50">
                 <tr>
-                  <th className="px-3 py-2 text-start font-semibold">{t("payments.month")}</th>
-                  <th className="px-3 py-2 text-start font-semibold">{t("payments.amount_due")}</th>
-                  <th className="px-3 py-2 text-start font-semibold">{t("payments.amount_paid")}</th>
-                  <th className="px-3 py-2 text-start font-semibold">{t("payments.status")}</th>
-                  <th className="px-3 py-2 text-start font-semibold">{t("payments.paid_on")}</th>
+                  <th className="px-3 py-2 text-start font-semibold">{t("students.group_label")}</th>
+                  <th className="px-3 py-2 text-start font-semibold">{t("students.consumed_sessions_label")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {data.payments.map((p) => (
-                  <tr key={p.id}>
-                    <td className="px-3 py-2">{formatDate(p.month, "MMM yyyy")}</td>
-                    <td className="px-3 py-2 font-medium">{formatCurrency(p.amountDue)}</td>
-                    <td className="px-3 py-2">{formatCurrency(p.amountPaid)}</td>
-                    <td className="px-3 py-2">
-                      <Badge variant={statusVariant[p.status] || "secondary"}>{t(`payments.${p.status}`)}</Badge>
+                {data.groupStudents.map((gs) => (
+                  <tr key={gs.id}>
+                    <td className="px-3 py-2 font-medium">
+                      <span className="mr-1.5 inline-block size-2 rounded-full" style={{ background: gs.group?.color || gs.subject?.color || "#888" }} />
+                      {gs.group?.name ?? "?"}
                     </td>
-                    <td className="px-3 py-2 text-muted-foreground">{p.paidAt ? formatDate(p.paidAt) : "—"}</td>
+                    <td className="px-3 py-2">
+{(() => {
+                      const d = sessionCounterDisplay(gs.sessionsIncluded, gs.consumedSessions, gs.paidSessions);
+                      if (d.state === "hidden") return <span className="text-sm text-muted-foreground">—</span>;
+                      if (d.state === "none") return <span className="text-sm text-muted-foreground">{t("students.consumed_sessions_none")}</span>;
+                      return (
+                        <Badge variant={d.exhausted ? "destructive" : "success"}>
+                          {d.consumed} / {d.paid}
+                        </Badge>
+                      );
+                    })()}
+                    </td>
                   </tr>
                 ))}
               </tbody>

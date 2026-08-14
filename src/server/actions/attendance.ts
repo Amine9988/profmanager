@@ -6,9 +6,247 @@ import { revalidateFullApp } from "@/lib/cache";
 import { getT } from "@/lib/i18n";
 import { toCamelArray } from "@/lib/db";
 import type { ActionResult } from "./students";
+import { sessionEndTimestamp } from "@/lib/session-time";
+
+/**
+ * Once a session's end time has passed, every active group member who was
+ * never marked for that session is recorded as absent automatically. Runs on
+ * read paths only; already-marked students are never overwritten.
+ */
+export async function autoMarkAbsentForPastSessions(): Promise<number> {  const { tenantId, supabase } = await getTenantContext();
+  try {
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+    const { data: sessions } = await supabase
+      .from("sessions")
+      .select("id, groupId, sessionDate, startTime, endTime")
+      .eq("tenantId", tenantId)
+      .eq("status", "scheduled")
+      .lte("sessionDate", todayStr)
+      .order("sessionDate", { ascending: false });
+
+    const past = (sessions || []).filter((s: any) => {
+      const end = sessionEndTimestamp(s);
+      return end !== null && end < now.getTime();
+    });
+    if (past.length === 0) return 0;
+
+    const sessionIds = past.map((s: any) => s.id);
+    const groupIds = [...new Set(past.map((s: any) => s.groupId).filter(Boolean))];
+
+    const [{ data: groupStudents }, { data: attendances }] = await Promise.all([
+      supabase
+        .from("group_students")
+        .select("groupId, studentId, enrolledAt")
+        .in("groupId", groupIds.length > 0 ? groupIds : [""])
+        .eq("status", "active"),
+      supabase
+        .from("attendances")
+        .select("sessionId, studentId")
+        .in("sessionId", sessionIds),
+    ]);
+
+    const markedKeys = new Set((attendances || []).map((a: any) => `${a.sessionId}|${a.studentId}`));
+    const studentsByGroup = new Map<string, string[]>();
+    const enrolledAtByKey = new Map<string, number>();
+    for (const g of groupStudents || []) {
+      const list = studentsByGroup.get(g.groupId) || [];
+      list.push(g.studentId);
+      studentsByGroup.set(g.groupId, list);
+      if (g.enrolledAt) {
+        const ts = new Date(g.enrolledAt).getTime();
+        if (!Number.isNaN(ts)) enrolledAtByKey.set(`${g.groupId}|${g.studentId}`, ts);
+      }
+    }
+
+    // Cleanup: drop any existing attendance that predates the student's
+    // enrollment in that group (legacy rows created before this guard).
+    for (const s of past as any[]) {
+      for (const studentId of studentsByGroup.get(s.groupId) || []) {
+        const enrolledAt = enrolledAtByKey.get(`${s.groupId}|${studentId}`);
+        if (enrolledAt === undefined) continue;
+        const endMs = sessionEndTimestamp(s);
+        if (endMs === null || endMs >= enrolledAt) continue;
+        await supabase
+          .from("attendances")
+          .delete()
+          .eq("sessionId", s.id)
+          .eq("studentId", studentId)
+          .eq("tenantId", tenantId);
+      }
+    }
+
+    let marked = 0;
+    for (const s of past as any[]) {
+      const ids = studentsByGroup.get(s.groupId) || [];
+      for (const studentId of ids) {
+        // Never mark a session the student could not have attended because it
+        // ended before they enrolled in the group.
+        const enrolledAt = enrolledAtByKey.get(`${s.groupId}|${studentId}`);
+        if (enrolledAt !== undefined) {
+          const endMs = sessionEndTimestamp(s);
+          if (endMs !== null && endMs < enrolledAt) continue;
+        }
+        if (markedKeys.has(`${s.id}|${studentId}`)) continue;
+        await supabase.from("attendances").upsert({
+          id: randomUUID(),
+          tenantId,
+          sessionId: s.id,
+          studentId,
+          status: "absent",
+          markedAt: now.toISOString(),
+        }, { onConflict: "sessionId,studentId" });
+        marked++;
+      }
+    }
+
+    // Pages are force-dynamic; skip revalidateFullApp here because this
+    // helper runs during render (fire-and-forget) where revalidatePath is
+    // not permitted. Fresh data is served on the next request anyway.
+    return marked;
+  } catch (e) {
+    console.error("[autoMarkAbsentForPastSessions]", e);
+    return 0;
+  }
+}
+
+/**
+ * For groups configured with a paid session package (sessionsIncluded), each
+ * session whose end time has passed consumes one session credit from every
+ * active member. Runs on read paths; a session is consumed at most once
+ * (guarded by sessions.creditsConsumed).
+ */
+export async function consumeExpiredSessionCredits(): Promise<number> {
+  const { tenantId, supabase } = await getTenantContext();
+  try {
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+    const { data: sessions } = await supabase
+      .from("sessions")
+      .select("id, groupId, sessionDate, startTime, endTime, creditsConsumed")
+      .eq("tenantId", tenantId)
+      .eq("status", "scheduled")
+      .eq("creditsConsumed", 0)
+      .lte("sessionDate", todayStr)
+      .order("sessionDate", { ascending: false });
+
+    const past = (sessions || []).filter((s: any) => {
+      const end = sessionEndTimestamp(s);
+      return end !== null && end < now.getTime();
+    });
+    if (past.length === 0) return 0;
+
+    const groupIds = [...new Set(past.map((s: any) => s.groupId).filter(Boolean))];
+    const { data: groups } = await supabase
+      .from("groups")
+      .select("id, sessionsIncluded")
+      .eq("tenantId", tenantId)
+      .in("id", groupIds.length > 0 ? groupIds : [""]);
+
+    const packageGroupIds = new Set(
+      (groups || [])
+        .filter((g: any) => Number(g.sessionsIncluded) > 0)
+        .map((g: any) => g.id)
+    );
+    const eligible = past.filter((s: any) => packageGroupIds.has(s.groupId));
+    if (eligible.length === 0) return 0;
+
+    const eligibleGroupIds = [...packageGroupIds];
+    const [{ data: groupStudents }, { data: paymentRows }] = await Promise.all([
+      supabase
+        .from("group_students")
+        .select("id, groupId, studentId, remainingSessions, consumedSessions")
+        .eq("tenantId", tenantId)
+        .eq("status", "active")
+        .in("groupId", eligibleGroupIds),
+      supabase
+        .from("payments")
+        .select("studentId, groupId, amountPaid, paidAt, createdAt")
+        .eq("tenantId", tenantId)
+        .gt("amountPaid", 0),
+    ]);
+
+    // A past session must never drain credits granted by a newer payment: a
+    // session only consumes a member's credit if its end time is on/after the
+    // member's most recent payment. Sessions that predate every payment are
+    // ignored too (nothing owed), so a fresh payment always shows intact.
+    const lastPaidByStudent = new Map<string, number>();
+    // Cumulative counter: the member's FIRST payment for the group sets the
+    // baseline — every expired session on/after it counts as consumed, even
+    // beyond the paid session pool (so the counter can show e.g. "5 من 4").
+    const firstPaidByStudentGroup = new Map<string, number>();
+    for (const p of (paymentRows || []) as any[]) {
+      const ts = p.paidAt
+        ? new Date(p.paidAt).getTime()
+        : p.createdAt
+          ? new Date(p.createdAt).getTime()
+          : 0;
+      if (ts > (lastPaidByStudent.get(p.studentId) ?? 0)) {
+        lastPaidByStudent.set(p.studentId, ts);
+      }
+      if (ts > 0 && p.groupId) {
+        const key = `${p.studentId}|${p.groupId}`;
+        if (ts < (firstPaidByStudentGroup.get(key) ?? Infinity)) {
+          firstPaidByStudentGroup.set(key, ts);
+        }
+      }
+    }
+
+    let consumed = 0;
+    // Sessions consumed are tallied per member and applied in a single update
+    // per member afterwards. Updating inside the loop would read a stale
+    // consumedSessions for every session and overwrite earlier increments
+    // when a member has several expired sessions in the same run.
+    const consumedByMember = new Map<string, { gs: any; count: number }>();
+    for (const s of eligible as any[]) {
+      const members = (groupStudents || []).filter((gs: any) => gs.groupId === s.groupId);
+      for (const gs of members) {
+        const endMs = sessionEndTimestamp(s);
+        const entry = consumedByMember.get(gs.id) || { gs, count: 0 };
+        const firstPay = firstPaidByStudentGroup.get(`${gs.studentId}|${s.groupId}`);
+        if (endMs !== null && firstPay !== undefined && endMs >= firstPay) {
+          entry.count++;
+        }
+        consumedByMember.set(gs.id, entry);
+        const current = Number(gs.remainingSessions ?? 0);
+        if (current > 0) {
+          const lastPay = lastPaidByStudent.get(gs.studentId);
+          if (endMs !== null && lastPay !== undefined && endMs < lastPay) continue;
+          await supabase
+            .from("group_students")
+            .update({ remainingSessions: current - 1 })
+            .eq("id", gs.id);
+          consumed++;
+        }
+      }
+      await supabase.from("sessions").update({ creditsConsumed: 1 }).eq("id", s.id);
+    }
+    for (const { gs, count } of consumedByMember.values()) {
+      if (count > 0) {
+        await supabase
+          .from("group_students")
+          .update({ consumedSessions: Number(gs.consumedSessions ?? 0) + count })
+          .eq("id", gs.id);
+      }
+    }
+
+    // Pages are force-dynamic; skip revalidateFullApp here because this
+    // helper runs during render (fire-and-forget) where revalidatePath is
+    // not permitted. Fresh data is served on the next request anyway.
+    return consumed;
+  } catch (e) {
+    console.error("[consumeExpiredSessionCredits]", e);
+    return 0;
+  }
+}
 
 export async function getUpcomingSessions() {
   const { tenantId, supabase } = await getTenantContext();
+
+  void autoMarkAbsentForPastSessions();
+  void consumeExpiredSessionCredits();
 
   const now = new Date();
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -93,7 +331,15 @@ export async function getStudentAttendanceView(studentId: string) {
       .eq("tenantId", tenantId)
       .in("sessionId", sessionIds);
     const attMap = new Map<string, string>((atts || []).map((a: any) => [a.sessionId, a.status]));
-    sessions = sessions.map((s: any) => ({ ...s, attendanceStatus: attMap.get(s.id) ?? null }));
+    sessions = sessions.map((s: any) => ({
+      ...s,
+      attendanceStatus:
+        attMap.get(s.id) ??
+        (() => {
+          const end = sessionEndTimestamp(s);
+          return end !== null && end < Date.now() ? "absent" : null;
+        })(),
+    }));
   }
 
   return { groups, sessions, roomById };
@@ -101,6 +347,9 @@ export async function getStudentAttendanceView(studentId: string) {
 
 export async function getSessionWithAttendance(sessionId: string) {
   const { tenantId, supabase } = await getTenantContext();
+
+  void autoMarkAbsentForPastSessions();
+  void consumeExpiredSessionCredits();
 
   const { data: session } = await supabase
     .from("sessions")
@@ -126,7 +375,16 @@ export async function getSessionWithAttendance(sessionId: string) {
     .eq("sessionId", sessionId);
 
   const attendanceByStudent = new Map<string, any>((attendances || []).map((a: any) => [a.studentId, a]));
-  const activeGroupStudents = (groupStudents || []).filter((gs: any) => gs.status === "active" && gs.students != null);
+  const sessionEndMs = sessionEndTimestamp(session);
+  // Only members who were already enrolled when this session took place
+  // belong on the roster; someone who joined the group later has no business
+  // in an earlier session.
+  const activeGroupStudents = (groupStudents || [])
+    .filter((gs: any) => gs.status === "active" && gs.students != null)
+    .filter((gs: any) => {
+      if (!gs.enrolledAt || sessionEndMs === null) return true;
+      return sessionEndMs >= new Date(gs.enrolledAt).getTime();
+    });
 
   const roster = activeGroupStudents.map((gs: any) => ({
     student: gs.students,
@@ -182,7 +440,7 @@ export async function markAllPresent(sessionId: string): Promise<ActionResult> {
 
     const { data: session } = await ctx.supabase
       .from("sessions")
-      .select("groupId, groups(group_students(*, students(*)))")
+      .select("groupId, startTime, endTime, groups(group_students(*, students(*)))")
       .eq("id", sessionId)
       .eq("tenantId", ctx.tenantId)
       .single();
@@ -192,9 +450,11 @@ export async function markAllPresent(sessionId: string): Promise<ActionResult> {
     const groupArr = session.groups as any[];
     const group = Array.isArray(groupArr) ? groupArr[0] : groupArr;
     const groupStudents = (group?.group_students || []) as any[];
+    const sessionEndMs = sessionEndTimestamp(session);
 
     for (const gs of groupStudents) {
       if (gs.status !== "active") continue;
+      if (sessionEndMs !== null && gs.enrolledAt && sessionEndMs < new Date(gs.enrolledAt).getTime()) continue;
       await ctx.supabase.from("attendances").upsert({
         id: randomUUID(),
         sessionId: sessionId,
@@ -222,6 +482,9 @@ export async function markAllPresent(sessionId: string): Promise<ActionResult> {
 export async function getAttendanceRegister(groupId: string) {
   const { tenantId, supabase } = await getTenantContext();
 
+  void autoMarkAbsentForPastSessions();
+  void consumeExpiredSessionCredits();
+
   const [{ data: sessionsData }, { data: groupStudentsData }] = await Promise.all([
     supabase
       .from("sessions")
@@ -233,7 +496,7 @@ export async function getAttendanceRegister(groupId: string) {
       .order("startTime", { ascending: true }),
     supabase
       .from("group_students")
-      .select("id, studentId, status, students(*)")
+      .select("id, studentId, status, enrolledAt, students(*)")
       .eq("groupId", groupId)
       .eq("status", "active"),
   ]);
@@ -267,7 +530,16 @@ export async function getAttendanceRegister(groupId: string) {
   const students = groupStudents.map((gs: any) => {
     const atts = attendancesByStudent[gs.studentId] || [];
     const attBySession = new Map(atts.map((a) => [a.sessionId, a.status]));
-    const records = sessions.map((s: any) => ({
+    const enrolledMs = gs.enrolledAt ? new Date(gs.enrolledAt).getTime() : 0;
+    // Only sessions the student could have attended (ended on/after their
+    // enrollment) appear in their register.
+    const eligibleSessions = sessions.filter((s: any) => {
+      if (!enrolledMs) return true;
+      const end = sessionEndTimestamp(s);
+      if (end === null) return true;
+      return end >= enrolledMs;
+    });
+    const records = eligibleSessions.map((s: any) => ({
       sessionId: s.id,
       sessionDate: s.sessionDate,
       startTime: s.startTime,

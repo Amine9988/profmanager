@@ -129,6 +129,7 @@ interface Payment {
   note: string | null;
   receiptNumber: string | null;
   receiptSequence: number | null;
+  groupId: string | null;
   student: {
     id: string;
     fullName: string;
@@ -373,6 +374,7 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
     const d = new Date(year, month - 1, 1);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   });
+  const [allTime, setAllTime] = useState(false);
 
   function changeMonth(delta: number) {
     setViewMonth((prev) => {
@@ -441,7 +443,8 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
   const fetchPayments = useCallback(async () => {
     const y = Number(viewMonth.slice(0, 4));
     const m = Number(viewMonth.slice(5, 7));
-    const res = await fetch(`/api/payments?year=${y}&month=${m}`);
+    const url = allTime ? "/api/payments?all=1" : `/api/payments?year=${y}&month=${m}`;
+    const res = await fetch(url);
     if (res.ok) {
       const data: Payment[] = (await res.json()).map((p: Payment) =>
         p.status === "partial" ? { ...p, status: "overdue" } : p
@@ -449,17 +452,21 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
       setPayments(data);
       setSummary(calcSummary(data));
     }
-  }, [viewMonth]);
+  }, [viewMonth, allTime]);
 
   const handleRecorded = useCallback(
     (recordedMonth?: string) => {
+      if (allTime) {
+        fetchPayments();
+        return;
+      }
       if (recordedMonth && recordedMonth !== viewMonth) {
         setViewMonth(recordedMonth);
       } else {
         fetchPayments();
       }
     },
-    [fetchPayments, viewMonth]
+    [fetchPayments, viewMonth, allTime]
   );
 
   useEffect(() => {
@@ -496,14 +503,24 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
     const monthLabel = new Date(p.month).toLocaleDateString("ar-DZ", { year: "numeric", month: "long" });
     const dateLabel = new Date().toLocaleDateString("ar-DZ");
     const remaining = Math.max(p.amountDue - p.amountPaid, 0);
+    const groupLabel = (() => {
+      const matched = (p.student?.groupStudents ?? []).find(
+        (gs) => gs.groups?.id === p.groupId || gs.group?.id === p.groupId
+      );
+      if (matched) return matched.groups?.name || matched.group?.name || "—";
+      const fallback = (p.student?.groupStudents ?? [])
+        .map((gs) => gs.groups?.name || gs.group?.name || null)
+        .find((n) => n);
+      return fallback || "—";
+    })();
     return `
       <div id="inv-${i}" dir="rtl" style="width:350px;margin:0 auto 20px;padding:24px;font-family:'Segoe UI',Arial,sans-serif;background:#fff;direction:rtl;text-align:right;border:1px solid #e2e8f0;border-radius:8px;">
         <h2 style="text-align:center;font-size:18px;font-weight:700;margin:0 0 8px;color:#1e293b;">فاتورة الدفع</h2>
         <hr style="border:none;border-top:1px solid #cbd5e1;margin:0 0 16px;" />
         <table style="width:100%;font-size:13px;border-collapse:collapse;">
           <tr><td style="padding:3px 0;color:#475569;">الطالب:</td><td style="padding:3px 0;font-weight:600;text-align:left;">${p.student?.fullName || "—"}</td></tr>
+          <tr><td style="padding:3px 0;color:#475569;">المجموعة:</td><td style="padding:3px 0;font-weight:600;text-align:left;">${groupLabel}</td></tr>
           <tr><td style="padding:3px 0;color:#475569;">الشهر:</td><td style="padding:3px 0;font-weight:600;text-align:left;">${monthLabel}</td></tr>
-          <tr><td style="padding:3px 0;color:#475569;">رقم الفاتورة:</td><td style="padding:3px 0;font-weight:600;text-align:left;">${p.receiptNumber || "—"}</td></tr>
           <tr><td style="padding:3px 0;color:#475569;">التاريخ:</td><td style="padding:3px 0;font-weight:600;text-align:left;">${dateLabel}</td></tr>
         </table>
         <hr style="border:none;border-top:1px solid #cbd5e1;margin:12px 0;" />
@@ -724,14 +741,23 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => changeMonth(-1)} title={t("payments.prev_month")}>
+          <Button variant="outline" size="icon" onClick={() => changeMonth(-1)} title={t("payments.prev_month")} disabled={allTime}>
             {direction === "rtl" ? <ChevronRight className="size-4" /> : <ChevronLeft className="size-4" />}
           </Button>
-          <Input type="month" value={viewMonth} onChange={(e) => e.target.value && setViewMonth(e.target.value)} className="w-44" aria-label={t("payments.month")} />
-          <Button variant="outline" size="icon" onClick={() => changeMonth(1)} title={t("payments.next_month")}>
+          <Input type="month" value={viewMonth} onChange={(e) => e.target.value && setViewMonth(e.target.value)} className="w-44" aria-label={t("payments.month")} disabled={allTime} />
+          <Button variant="outline" size="icon" onClick={() => changeMonth(1)} title={t("payments.next_month")} disabled={allTime}>
             {direction === "rtl" ? <ChevronLeft className="size-4" /> : <ChevronRight className="size-4" />}
           </Button>
         </div>
+        <label className="flex cursor-pointer items-center gap-1.5 text-sm">
+          <input
+            type="checkbox"
+            checked={allTime}
+            onChange={(e) => setAllTime(e.target.checked)}
+            className="size-4 accent-primary"
+          />
+          {t("payments.all_time")}
+        </label>
       </div>
       <div className="flex items-center justify-between mb-6">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-1">
@@ -844,7 +870,8 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
             variant="destructive"
             size="sm"
             onClick={() => setBulkDeletingPayment(true)}
-            disabled={bulkDeletingPayment}
+            disabled={bulkDeletingPayment || allTime}
+            title={allTime ? t("payments.bulk_delete_disabled_hint") : undefined}
           >
             <Trash2 className="size-4 mr-1" /> {t("payments.bulk_delete")}
           </Button>
@@ -897,7 +924,7 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
               {filteredPayments.map((p, i) => {
                 const remaining = Math.max(p.amountDue - p.amountPaid, 0);
                 return (
-                    <tr key={p.studentId} className={`border-b ${i % 2 === 0 ? "bg-background" : "bg-muted/20"}`}>
+                    <tr key={p.id} className={`border-b ${i % 2 === 0 ? "bg-background" : "bg-muted/20"}`}>
                     <td style={{ padding: "12px", textAlign: "center" }}>
                       <input
                         type="checkbox"
@@ -1034,7 +1061,7 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
           )}
           <DialogFooter className="shrink-0">
             <Button variant="outline" onClick={() => { const a = document.createElement("a"); a.href = pdfViewerUrl!; a.download = "ÙÙˆØ§ØªÙŠØ±-" + new Date().toISOString().slice(0, 10) + ".pdf"; a.click(); }}>
-              <FileText className="size-4 ml-1" /> ØªØ­Ù…ÙŠÙ„ PDF
+              <FileText className="size-4 ml-1" /> {t("payments.download_pdf")}
             </Button>
           </DialogFooter>
         </DialogContent>

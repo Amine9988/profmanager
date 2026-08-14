@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { GroupEditDialog } from "@/components/groups/group-edit-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Trash2, Users, Clock, Tag } from "lucide-react";
 import { deleteGroup } from "@/server/actions/groups";
@@ -28,6 +27,8 @@ type GroupCardProps = {
     subjectId: string | null;
     priceType: string;
     roomId: string | null;
+    sessionsIncluded: string | number | null;
+    color?: string | null;
   };
   subjects: Subject[];
   rooms?: { id: string; name: string; code: string }[];
@@ -71,9 +72,6 @@ export function GroupCard({ group, subjects, rooms }: GroupCardProps) {
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-2">
               <CardTitle className="text-base">{group.name}</CardTitle>
-              <Badge variant={group.status === "active" ? "success" : "secondary"}>
-                {group.status === "active" ? t("groups.active") : t("groups.archived")}
-              </Badge>
             </div>
             <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
               <GroupEditDialog
@@ -85,8 +83,10 @@ export function GroupCard({ group, subjects, rooms }: GroupCardProps) {
                   maxCapacity: group.maxCapacity,
                   pricePerSession: group.pricePerSession,
                   priceType: group.priceType,
+                  sessionsIncluded: group.sessionsIncluded,
                   teacherId: group.teacher?.id ?? null,
                   roomId: group.roomId ?? null,
+                  color: group.color ?? null,
                 }}
                 subjects={subjects}
                 rooms={rooms}
@@ -98,8 +98,8 @@ export function GroupCard({ group, subjects, rooms }: GroupCardProps) {
           </div>
           {group.subject && (
             <span
-              className="inline-block w-fit rounded-md px-2.5 py-0.5 text-xs font-medium"
-              style={{ backgroundColor: `${group.subject.color}18`, color: group.subject.color }}
+              className="inline-block w-fit rounded-md px-2.5 py-0.5 text-xs font-semibold text-white"
+              style={{ backgroundColor: group.color || group.subject.color }}
             >
               <Tag className="size-3 inline mr-1" />{group.subject.name}
             </span>
@@ -132,6 +132,11 @@ export function GroupCard({ group, subjects, rooms }: GroupCardProps) {
                 {t(`groups.${group.priceType}`)}
               </span>
               <span className="tabular-nums">{formatCurrency(Number(group.pricePerSession))}</span>
+              {Number(group.sessionsIncluded) > 0 && (
+                <span className="tabular-nums text-xs text-muted-foreground">
+                  · {group.sessionsIncluded} {t("groups.sessions_short")}
+                </span>
+              )}
             </p>
           )}
           <p className="flex items-center gap-1.5">

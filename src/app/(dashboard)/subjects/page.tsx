@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useT, useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { BookOpen, Plus, Pencil, Trash2, Search } from "lucide-react";
+import { BookOpen, Plus, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface Subject {
@@ -139,7 +139,6 @@ export default function SubjectsPage() {
 
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
 
   async function fetchSubjects() {
@@ -151,20 +150,6 @@ export default function SubjectsPage() {
     setLoading(true);
     fetchSubjects().finally(() => setLoading(false));
   }, []);
-
-  const filtered = useMemo(() => {
-    return subjects.filter((s) => {
-      if (search) {
-        const q = search.toLowerCase();
-        const match =
-          s.name.toLowerCase().includes(q) ||
-          (s.code || "").toLowerCase().includes(q) ||
-          (s.description || "").toLowerCase().includes(q);
-        if (!match) return false;
-      }
-      return true;
-    });
-  }, [subjects, search]);
 
   async function handleDelete(subject: Subject) {
     if (!window.confirm(t("subjects_page.delete_confirm"))) return;
@@ -184,21 +169,8 @@ export default function SubjectsPage() {
   return (
     <div className="space-y-6 p-4 md:p-6" dir={direction}>
       {/* Toolbar */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2 flex-1">
-          <div className="relative flex-1 max-w-xs">
-            <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-            <Input
-              placeholder={t("subjects_page.search_placeholder")}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-8"
-            />
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <SubjectFormDialog onSaved={fetchSubjects} />
-        </div>
+      <div className="flex justify-end">
+        <SubjectFormDialog onSaved={fetchSubjects} />
       </div>
 
       {/* Content */}
@@ -206,31 +178,21 @@ export default function SubjectsPage() {
         <p className="text-center text-muted-foreground py-8">{t("common.loading")}</p>
       ) : subjects.length === 0 ? (
         <EmptyState />
-      ) : filtered.length === 0 ? (
-        <Card>
-          <CardContent className="p-8 text-center text-muted-foreground">{t("common.noResults")}</CardContent>
-        </Card>
       ) : (
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: "800px" }}>
             <colgroup>
-              <col style={{ width: "22%" }} />
-              <col style={{ width: "10%" }} />
-              <col style={{ width: "10%" }} />
-              <col style={{ width: "13%" }} />
-              <col style={{ width: "13%" }} />
-              <col style={{ width: "12%" }} />
+              <col style={{ width: "50%" }} />
+              <col style={{ width: "20%" }} />
             </colgroup>
             <thead>
               <tr className="bg-muted/50 border-b">
                 <th style={{ textAlign: align, padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("subjects_page.table.subject")}</th>
-                <th style={{ textAlign: align, padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("subjects_page.table.teachers")}</th>
-                <th style={{ textAlign: align, padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("subjects_page.table.students")}</th>
                 <th style={{ textAlign: "center", padding: "12px", fontWeight: 600, fontSize: "13px", color: "hsl(var(--foreground))" }}>{t("subjects_page.table.actions")}</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((s, i) => (
+              {subjects.map((s, i) => (
                 <tr key={s.id} className={`border-b ${i % 2 === 0 ? "bg-background" : "bg-muted/20"}`}>
                   <td style={{ padding: "12px", textAlign: align, fontWeight: 600, fontSize: "14px", color: "hsl(var(--foreground))" }}>
                     <div className="flex items-center gap-2">
@@ -240,12 +202,6 @@ export default function SubjectsPage() {
                       />
                       {s.name}
                     </div>
-                  </td>
-                  <td style={{ padding: "12px", textAlign: align, fontSize: "14px", color: "hsl(var(--foreground))" }}>
-                    {s.teacherCount}
-                  </td>
-                  <td style={{ padding: "12px", textAlign: align, fontSize: "14px", color: "hsl(var(--foreground))" }}>
-                    {s.studentCount}
                   </td>
                   <td style={{ padding: "12px", textAlign: "center" }}>
                     <div className="flex items-center justify-center gap-1">

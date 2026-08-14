@@ -334,10 +334,95 @@ export async function cancelSession(sessionId: string): Promise<ActionResult> {
   const t = await getT();
   try {
     const ctx = await requirePermission("groups.update");
-    const { data: session } = await ctx.supabase.from("sessions").select("id").eq("id", sessionId).eq("tenantId", ctx.tenantId).single();
+    const { data: session } = await ctx.supabase.from("sessions").select("id, groupId, creditsConsumed").eq("id", sessionId).eq("tenantId", ctx.tenantId).single();
     if (!session) return { error: t("errors.session_not_found") };
+
+    // A cancelled session must never consume a student's remaining session
+    // credits. If this session had already consumed credits (its end time
+    // passed while it was scheduled), give every active member their credit
+    // back before marking it cancelled.
+    if (Number(session.creditsConsumed) === 1 && session.groupId) {
+      const { data: group } = await ctx.supabase.from("groups").select("id, sessionsIncluded").eq("id", session.groupId).single();
+      if (group && Number(group.sessionsIncluded) > 0) {
+        const { data: members } = await ctx.supabase
+          .from("group_students")
+          .select("id, remainingSessions, consumedSessions")
+          .eq("groupId", session.groupId)
+          .eq("status", "active");
+        for (const m of members || []) {
+          await ctx.supabase
+            .from("group_students")
+            .update({
+              remainingSessions: Number(m.remainingSessions ?? 0) + 1,
+              consumedSessions: Math.max(Number(m.consumedSessions ?? 0) - 1, 0),
+            })
+            .eq("id", m.id);
+        }
+      }
+      await ctx.supabase.from("sessions").update({ creditsConsumed: 0 }).eq("id", sessionId);
+    }
+
     await ctx.supabase.from("sessions").update({ status: "cancelled" }).eq("id", sessionId);
     await createAuditLog({ tenantId: ctx.tenantId, userId: ctx.userId, action: "session.cancelled", entityType: "session", entityId: sessionId });
+    revalidateFullApp();
+    return { success: true };
+  } catch (e) {
+    if (e instanceof AuthError) return { error: e.message };
+    return { error: t("common.error") };
+  }
+}
+
+export async function updateExtraSession(formData: FormData): Promise<ActionResult> {
+  const t = await getT();
+  try {
+    const ctx = await requirePermission("groups.update");
+    const sessionId = formData.get("sessionId") as string;
+    const sessionDate = formData.get("sessionDate") as string;
+    const startTime = formData.get("startTime") as string;
+    const endTime = formData.get("endTime") as string;
+    if (!sessionId || !sessionDate || !startTime || !endTime) return { error: t("errors.invalid_data") };
+    const { data: existing } = await ctx.supabase
+      .from("sessions")
+      .select("id, type")
+      .eq("id", sessionId)
+      .eq("tenantId", ctx.tenantId)
+      .single();
+    if (!existing) return { error: t("errors.session_not_found") };
+    if (existing.type !== "extra" && existing.type !== "makeup") {
+      return { error: t("errors.invalid_data") };
+    }
+    const now = new Date().toISOString();
+    await ctx.supabase
+      .from("sessions")
+      .update({ sessionDate, startTime, endTime, updatedAt: now })
+      .eq("id", sessionId)
+      .eq("tenantId", ctx.tenantId);
+    await createAuditLog({ tenantId: ctx.tenantId, userId: ctx.userId, action: "session.updated", entityType: "session", entityId: sessionId });
+    revalidateFullApp();
+    return { success: true };
+  } catch (e) {
+    if (e instanceof AuthError) return { error: e.message };
+    return { error: t("common.error") };
+  }
+}
+
+export async function deleteExtraSession(sessionId: string): Promise<ActionResult> {
+  const t = await getT();
+  try {
+    const ctx = await requirePermission("groups.update");
+    const { data: existing } = await ctx.supabase
+      .from("sessions")
+      .select("id, type")
+      .eq("id", sessionId)
+      .eq("tenantId", ctx.tenantId)
+      .single();
+    if (!existing) return { error: t("errors.session_not_found") };
+    if (existing.type !== "extra" && existing.type !== "makeup") {
+      return { error: t("errors.invalid_data") };
+    }
+    await ctx.supabase.from("attendances").delete().eq("sessionId", sessionId).eq("tenantId", ctx.tenantId);
+    await ctx.supabase.from("sessions").delete().eq("id", sessionId).eq("tenantId", ctx.tenantId);
+    await createAuditLog({ tenantId: ctx.tenantId, userId: ctx.userId, action: "session.deleted", entityType: "session", entityId: sessionId });
     revalidateFullApp();
     return { success: true };
   } catch (e) {

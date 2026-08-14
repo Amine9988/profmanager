@@ -5,12 +5,12 @@ import { markAttendance, markAllPresent } from "@/server/actions/attendance";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Check, X, Clock, CheckCheck } from "lucide-react";
+import { Check, X, CheckCheck } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { toast } from "sonner";
 import { useT, useI18n } from "@/lib/i18n";
 
-type AttendanceStatus = "present" | "absent" | "late" | "excused";
+type AttendanceStatus = "present" | "absent" | "excused";
 
 type RosterEntry = {
   student: { id: string; fullName: string };
@@ -43,7 +43,6 @@ export function AttendanceMarker({
   > = {
     present: { label: t("attendance.present"), icon: Check, activeClass: "bg-success text-success-foreground" },
     absent: { label: t("attendance.absent"), icon: X, activeClass: "bg-destructive text-white" },
-    late: { label: t("attendance.late"), icon: Clock, activeClass: "bg-warning text-warning-foreground" },
     excused: { label: t("attendance.excused"), icon: Check, activeClass: "bg-secondary text-secondary-foreground" },
   };
 
@@ -99,8 +98,8 @@ export function AttendanceMarker({
                   <span className="font-medium">{entry.student.fullName}</span>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2">
-                  {(["present", "absent", "late"] as AttendanceStatus[]).map((status) => {
+                <div className="grid grid-cols-2 gap-2">
+                  {(["present", "absent"] as AttendanceStatus[]).map((status) => {
                     const config = statusConfig[status];
                     const Icon = config.icon;
                     const isActive = currentStatus === status;

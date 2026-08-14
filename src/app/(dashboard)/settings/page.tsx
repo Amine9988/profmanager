@@ -1,6 +1,7 @@
 import { getTenantSettings } from "@/server/actions/settings";
 import { TenantSettingsForm } from "@/components/shared/tenant-settings-form";
 import { SchoolYearForm } from "@/components/shared/school-year-form";
+import { ExcelExportCard } from "@/components/shared/excel-export-card";
 
 import { ResetButton } from "@/components/shared/reset-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,6 +50,8 @@ export default async function SettingsPage() {
           />
         </CardContent>
       </Card>
+
+      <ExcelExportCard />
 
       <Card className="border-red-500">
         <CardHeader>

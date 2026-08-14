@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useState, startTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { updateGroup } from "@/server/actions/groups";
@@ -23,7 +23,7 @@ import { LevelSelect } from "@/components/shared/level-select";
 import { useT } from "@/lib/i18n";
 import { TeacherSelect } from "@/components/shared/teacher-select";
 
-type Subject = { id: string; name: string };
+type Subject = { id: string; name: string; color?: string | null };
 type Room = { id: string; name: string; code: string };
 
 type GroupData = {
@@ -34,9 +34,40 @@ type GroupData = {
   maxCapacity: number;
   pricePerSession: string | number | null;
   priceType: string;
+  sessionsIncluded: string | number | null;
   teacherId: string | null;
   roomId: string | null;
+  color?: string | null;
 };
+
+export const GROUP_COLOR_PALETTE = [
+  "#6366f1", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444",
+  "#8b5cf6", "#ec4899", "#d97706", "#14b8a6", "#a855f7",
+];
+
+function ColorPicker({ value, onChange, label }: { value: string; onChange: (c: string) => void; label: string }) {
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <div className="flex flex-wrap items-center gap-2">
+        {GROUP_COLOR_PALETTE.map((c) => (
+          <button
+            key={c}
+            type="button"
+            onClick={() => onChange(c)}
+            className={`size-6 rounded-full border-2 transition-transform hover:scale-110 ${value === c ? "border-foreground scale-110" : "border-transparent"}`}
+            style={{ backgroundColor: c }}
+            aria-label={c}
+          />
+        ))}
+        <label className="flex cursor-pointer items-center gap-1.5 rounded-full border border-input px-2 py-1 text-xs text-muted-foreground">
+          <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="size-4 rounded border-0 bg-transparent p-0" />
+          {value}
+        </label>
+      </div>
+    </div>
+  );
+}
 
 export function GroupEditDialog({ group, subjects, rooms }: { group: GroupData; subjects: Subject[]; rooms?: Room[] }) {
   const t = useT();
@@ -46,6 +77,7 @@ export function GroupEditDialog({ group, subjects, rooms }: { group: GroupData; 
   const [priceType, setPriceType] = useState(group.priceType);
   const [teacherId, setTeacherId] = useState<string>(group.teacherId ?? "");
   const [roomId, setRoomId] = useState<string>(group.roomId ?? "");
+  const [color, setColor] = useState<string>(group.color || GROUP_COLOR_PALETTE[0]);
   const [state, formAction, pending] = useActionState<ActionResult, FormData>(updateGroup, {});
 
   useEffect(() => {
@@ -60,6 +92,18 @@ export function GroupEditDialog({ group, subjects, rooms }: { group: GroupData; 
     }
   }, [state, router, t]);
 
+  useEffect(() => {
+    if (open) {
+      setColor(group.color || subjects.find((s) => s.id === subjectId)?.color || GROUP_COLOR_PALETTE[0]);
+    }
+  }, [open, group, subjectId, subjects]);
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    startTransition(() => formAction(formData));
+  }
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -67,11 +111,11 @@ export function GroupEditDialog({ group, subjects, rooms }: { group: GroupData; 
           <Pencil className="size-4" /> {t("common.edit")}
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("groups.edit_title")}</DialogTitle>
         </DialogHeader>
-        <form action={formAction} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <input type="hidden" name="groupId" value={group.id} />
           <input type="hidden" name="teacherId" value={teacherId} />
           <input type="hidden" name="roomId" value={roomId} />
@@ -110,7 +154,11 @@ export function GroupEditDialog({ group, subjects, rooms }: { group: GroupData; 
             <div className="space-y-2">
               <Label htmlFor="subjectId">{t("groups.subject_label")}</Label>
               <input type="hidden" name="subjectId" value={subjectId} />
-              <Select value={subjectId} onValueChange={setSubjectId}>
+              <Select value={subjectId} onValueChange={(v) => {
+                setSubjectId(v);
+                const s = subjects.find((x) => x.id === v);
+                if (s?.color) setColor(s.color);
+              }}>
                 <SelectTrigger className="w-full" id="subjectId">
                   <SelectValue placeholder={t("groups.subject_placeholder")} />
                 </SelectTrigger>
@@ -163,6 +211,21 @@ export function GroupEditDialog({ group, subjects, rooms }: { group: GroupData; 
               </Select>
             </div>
           </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="sessionsIncluded">{t("groups.sessions_included_label")}</Label>
+            <Input
+              id="sessionsIncluded"
+              name="sessionsIncluded"
+              type="number"
+              min="0"
+              defaultValue={group.sessionsIncluded ? String(group.sessionsIncluded) : ""}
+            />
+            <p className="text-xs text-muted-foreground">{t("groups.sessions_included_hint")}</p>
+          </div>
+
+          <input type="hidden" name="color" value={color} />
+          <ColorPicker value={color} onChange={setColor} label={t("groups.color_label")} />
 
           <DialogFooter>
             <Button type="submit" disabled={pending}>

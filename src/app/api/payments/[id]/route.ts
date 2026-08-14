@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTenantContext } from "@/lib/auth";
-import { calculateStatus, normalizePayment } from "@/lib/payments/utils";
+import { calculateStatus, normalizePayment, resetSessionCreditsOnPaymentDelete } from "@/lib/payments/utils";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -42,7 +42,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const amountPaid = body.amountPaid !== undefined ? Number(body.amountPaid) : Number(existing.amountPaid);
     const status = calculateStatus(Number(existing.amountDue), amountPaid, new Date(existing.month));
-    const paidAt = status === "paid" && !existing.paidAt ? new Date().toISOString() : "paidAt" in body ? body.paidAt : existing.paidAt;
+    // Keep an already-recorded payment date; otherwise record one as soon as money
+    // has actually been received (even for partial payments). The body can still
+    // override with an explicit value when provided.
+    const paidAt = "paidAt" in body
+      ? body.paidAt
+      : existing.paidAt || (amountPaid > 0 ? new Date().toISOString() : existing.paidAt);
 
     const oldAmountPaid = Number(existing.amountPaid);
     const newPayment = amountPaid - oldAmountPaid;
@@ -51,6 +56,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       amountPaid,
       status,
       paidAt,
+      groupId: "groupId" in body ? body.groupId : existing.groupId ?? null,
       note: "note" in body ? body.note : existing.note,
       updatedAt: new Date().toISOString(),
     };
@@ -123,7 +129,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
     const { data: existing } = await supabase
       .from("payments")
-      .select("id, amountDue, amountPaid, month, studentId, students(fullName)")
+      .select("id, amountDue, amountPaid, month, studentId, groupId, students(fullName)")
       .eq("id", id)
       .eq("tenantId", tenantId)
       .single();
@@ -148,6 +154,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     }
 
     await supabase.from("payments").delete().eq("id", id);
+
+    await resetSessionCreditsOnPaymentDelete({ supabase, tenantId, studentId: existing.studentId, groupId: existing.groupId ?? null });
 
     const s = existing.students as unknown as { fullName?: string } | undefined;
     const studentName = s?.fullName ?? "Unknown";

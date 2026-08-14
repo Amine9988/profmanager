@@ -10,6 +10,7 @@ export type CalendarEvent = {
   groupName?: string;
   roomName?: string;
   studentName?: string;
+  startTime?: string | null;
   href: string;
 };
 
@@ -41,13 +42,15 @@ export async function getCalendarEvents(month: number, year: number) {
 
   for (const s of sessions || []) {
     const g = (s.groups as any) ?? {};
+    const timePart = s.startTime ? ` · ${s.startTime}${s.endTime ? `-${s.endTime}` : ""}` : "";
     events.push({
       id: `session-${s.id}`,
-      title: g.name ?? "?",
+      title: `${g.name ?? "?"}${timePart}`,
       date: s.sessionDate,
       type: "session",
       groupName: g.name ?? "?",
       roomName: undefined,
+      startTime: s.startTime ?? null,
       href: `/attendance/session/${s.id}`,
     });
   }

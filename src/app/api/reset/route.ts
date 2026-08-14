@@ -1,20 +1,17 @@
 import { NextResponse } from "next/server";
 import { getTenantContext } from "@/lib/auth";
+import { resetDatabase } from "@/lib/db/supabase-shim";
+import { revalidateFullApp } from "@/lib/cache";
 
-const TABLES = [
-  "notifications", "audit_logs", "attendances", "payments",
-  "group_students", "sessions", "schedule_slots", "guardians",
-  "levels", "students", "groups", "subjects",
-] as const;
-
+// Hard factory reset: rebuild the database from schema + seed only.
+// Deletes ALL business data (students, teachers, payments, groups, rooms,
+// cash movements, certificates, workspaces, ...) — account bootstrap tables
+// (tenants/users/roles/...) are re-created empty, then seeded defaults.
 export async function POST() {
   try {
-    const { tenantId, supabase } = await getTenantContext();
-
-    for (const table of TABLES) {
-      await supabase.from(table).delete().eq("tenantId", tenantId);
-    }
-
+    await getTenantContext();
+    await resetDatabase();
+    revalidateFullApp();
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json({ error: "Reset failed" }, { status: 500 });
