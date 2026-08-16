@@ -9,9 +9,9 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, FileText, GraduationCap, School, Phone, Users, CreditCard, CalendarCheck, CalendarX2, MessageSquare } from "lucide-react";
+import { Loader2, FileText, GraduationCap, School, Phone, Users, CreditCard, CalendarX2, MessageSquare } from "lucide-react";
 import { useT, useI18n } from "@/lib/i18n";
-import { formatCurrency, formatDate, initials, sessionCounterDisplay } from "@/lib/utils";
+import { formatCurrency, initials, sessionCounterDisplay } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 
@@ -243,58 +243,6 @@ function RecordContent({ data, t }: { data: RecordData; t: (key: string) => stri
         />
         <StatBox label={t("attendance.present")} value={String(st.presentCount)} className="text-green-600" />
         <StatBox label={t("attendance.absent")} value={String(st.absentCount)} className="text-destructive" />
-      </section>
-
-      {/* Attendance history */}
-      <section>
-        <h3 className="mb-2 text-sm font-semibold text-muted-foreground flex items-center gap-1.5">
-          <CalendarCheck className="size-4" /> {t("students.attendance_history")}
-          <span className="ml-auto text-xs font-normal">
-            {t("students.attendance_rate")}: <span className="font-semibold">{st.attendanceRate}%</span>
-          </span>
-        </h3>
-        {data.attendances.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t("students.no_attendance")}</p>
-        ) : (
-          <div className="max-h-44 overflow-y-auto rounded-lg border">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="px-3 py-2 text-start font-semibold">{t("students.date_header")}</th>
-                  <th className="px-3 py-2 text-start font-semibold">{t("payments.month")}</th>
-                  <th className="px-3 py-2 text-start font-semibold">{t("students.group_label")}</th>
-                  <th className="px-3 py-2 text-start font-semibold">{t("students.status_header")}</th>
-                  <th className="px-3 py-2 text-start font-semibold">{t("payments.paid")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {data.attendances.map((a) => (
-                  <tr key={a.id}>
-                    <td className="px-3 py-2">{a.sessionDate ? formatDate(a.sessionDate) : a.markedAt ? formatDate(a.markedAt) : "—"}</td>
-                    <td className="px-3 py-2 text-muted-foreground">
-                      {[a.startTime, a.endTime].filter(Boolean).join(" – ") || "—"}
-                    </td>
-                    <td className="px-3 py-2">
-                      {a.groupName ? <Badge variant="secondary" className="gap-1.5">{a.groupColor && <span className="size-2 rounded-full" style={{ background: a.groupColor }} />}{a.groupName}</Badge> : "—"}
-                    </td>
-                    <td className="px-3 py-2">
-                      {a.sessionStatus === "cancelled" ? (
-                        <Badge variant="secondary">{t("attendance.cancelled")}</Badge>
-                      ) : (
-                        <Badge variant={statusVariant[a.status] || "secondary"}>{t(`attendance.${a.status}`)}</Badge>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      <Badge variant={a.paid ? "success" : "destructive"}>
-                        {a.paid ? t("payments.paid") : t("payments.unpaid")}
-                      </Badge>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </section>
 
       {/* Remaining sessions */}

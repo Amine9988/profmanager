@@ -104,3 +104,6 @@ cookies*.txt
 
 electron/dist/*.exe
 *.exe
+
+# test scratch
+/tests-tmp/

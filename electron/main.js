@@ -50,6 +50,44 @@ function findAdb() {
   return null;
 }
 
+// Windows Defender scans every file of a freshly installed Electron app on first
+// read, which makes the standalone server's cold module load take 10-25s. Adding
+// a Defender exclusion for the install dir cuts cold startup to ~2-4s.
+function ensureDefenderExclusion(dir) {
+  return new Promise((resolve) => {
+    // The Defender exclusion list is only fully visible to elevated processes,
+    // so a non-elevated probe cannot reliably detect an existing exclusion and
+    // would re-show the UAC prompt on every launch. Only attempt it once per
+    // userData.
+    const flag = path.join(app.getPath("userData"), "defender-exclusion-attempted.flag");
+    if (fs.existsSync(flag)) return resolve(false);
+    try { fs.writeFileSync(flag, new Date().toISOString()); } catch {}
+    const probe = spawn("powershell.exe", [
+      "-NoProfile", "-Command",
+      "$p = (Get-MpPreference).ExclusionPath; if ($p -contains '" + dir + "') { 'present' } else { 'absent' }",
+    ], { stdio: ["ignore", "pipe", "ignore"] });
+    let out = "";
+    probe.stdout.on("data", (d) => (out += d));
+    probe.on("error", () => resolve(false));
+    probe.on("exit", (code) => {
+      if (code !== 0 || out.trim() !== "absent") return resolve(false);
+      // Not excluded — add it via a one-time UAC elevation using a temp script.
+      const script = path.join(os.tmpdir(), "pm-defender-exclusion.ps1");
+      try {
+        fs.writeFileSync(script, 'Add-MpPreference -ExclusionPath "' + dir + '"\n');
+      } catch { return resolve(false); }
+      log("requesting Defender exclusion for " + dir);
+      const add = spawn("powershell.exe", [
+        "-NoProfile", "-Command",
+        "Start-Process -Verb RunAs -Wait -FilePath 'powershell.exe' -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','" + script + "'",
+      ], { stdio: "ignore" });
+      add.on("error", () => resolve(false));
+      add.on("exit", () => { log("defender exclusion attempt finished"); resolve(true); });
+    });
+    setTimeout(() => { probe.kill(); resolve(false); }, 8000);
+  });
+}
+
 // USB scanning via Android ADB reverse: makes the phone's localhost:PORT point to
 // this computer's localhost:PORT. Works fully offline (USB cable + USB debugging).
 function startAdbReverse(port) {
@@ -141,6 +179,38 @@ function isPortFree(port) {
   });
 }
 
+function checkOverview(port, timeoutMs) {
+  return new Promise((resolve) => {
+    const req = http.get("http://127.0.0.1:" + port + "/overview", (res) => {
+      res.resume();
+      resolve(true); // any response means the server actually renders pages
+    });
+    req.on("error", () => resolve(false));
+    req.setTimeout(timeoutMs || 3500, () => { req.destroy(); resolve(false); });
+  });
+}
+
+function killPortOwner(port) {
+  try {
+    const out = execSync("netstat -ano | findstr /R \":" + port + " .*LISTENING\"", {
+      encoding: "utf8",
+      timeout: 5000,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const pids = [];
+    for (const line of out.split(/\r?\n/)) {
+      const m = line.trim().match(/\s+(\d+)\s*$/);
+      if (m && line.includes("LISTENING")) pids.push(m[1]);
+    }
+    for (const pid of pids) {
+      if (pid && pid !== String(process.pid)) {
+        log("killing broken port owner pid=" + pid);
+        try { execSync("taskkill /PID " + pid + " /T /F", { stdio: "ignore", timeout: 5000 }); } catch {}
+      }
+    }
+  } catch {}
+}
+
 function pollServer(port, timeoutMs, shouldAbort) {
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + timeoutMs;
@@ -219,35 +289,67 @@ function spawnServer(standaloneDir, port) {
       return null;
     };
     pollServer(port, 90000, abort).then(
-      (p) => resolve({ port: p, child }),
+      (p) => {
+        // Guard against a race: our child may have failed to bind (EADDRINUSE)
+        // right after the poll was satisfied by ANOTHER instance's server on the
+        // same port. Only claim success if our own child is still alive.
+        if (exited) {
+          reject(new Error("server exited after poll: " + stderrBuf.slice(0, 400)));
+          return;
+        }
+        resolve({ port: p, child });
+      },
       (err) => reject(new Error(err.message + (stderrBuf ? " | server: " + stderrBuf.slice(0, 500) : "")))
     );
   });
 }
 
 async function startServer(standaloneDir) {
-  // If a ProfManager server is already serving on one of our ports, attach to
-  // it instead of spawning a duplicate so any double-click always opens a window.
-  for (const port of [3001, 3002, 3003, 3004, 3005]) {
+  const PORTS = [3001, 3002, 3003, 3004, 3005];
+  // If any server is already listening, attach to it. The page load retry below
+  // absorbs slow cold starts, so no /overview liveness check is needed here.
+  for (const port of PORTS) {
     if (!(await isPortFree(port))) {
       log("attaching to existing server on port " + port);
       return { port, child: null };
     }
   }
   let lastErr = "";
-  for (const port of [3001, 3002, 3003, 3004, 3005]) {
+  for (const port of PORTS) {
     log("trying port " + port);
+    if (!(await isPortFree(port))) {
+      log("port " + port + " became occupied meanwhile - attaching");
+      return { port, child: null };
+    }
     try {
-      if (await isPortFree(port)) {
-        const r = await spawnServer(standaloneDir, port);
-        log("server ready on port " + port);
-        return r;
-      }
-      log("port " + port + " already in use, trying next");
+      const r = await spawnServer(standaloneDir, port);
+      log("server ready on port " + port);
+      return r;
     } catch (e) {
       lastErr = e.message;
       log("port " + port + " failed: " + e.message);
+      // A concurrent instance may have grabbed the port, or our own child may
+      // have died from EADDRINUSE. If the port is now occupied by a live server,
+      // use it instead of failing the whole launch.
+      if (!(await isPortFree(port))) {
+        log("port " + port + " now occupied - attaching to it");
+        return { port, child: serverChild };
+      }
       killServer();
+    }
+  }
+  // Last resort: force a free port by killing broken/hung owners (best effort;
+  // cross-integrity owners can't be killed and are simply skipped).
+  for (const port of PORTS) {
+    killPortOwner(port);
+  }
+  for (const port of PORTS) {
+    if (await isPortFree(port)) {
+      try {
+        const r = await spawnServer(standaloneDir, port);
+        log("server ready on port " + port + " (after cleanup)");
+        return r;
+      } catch (e) { lastErr = e.message; killServer(); }
     }
   }
   throw new Error("Server failed: no free port 3001-3005. " + (lastErr || ""));
@@ -274,12 +376,70 @@ function setupTray(port) {
   tray.on("double-click", () => { mainWindow.show(); mainWindow.focus(); });
 }
 
+function showErrorPage(detail) {
+  const logPath = LOG.replace(/\\/g, "/");
+  const d = (detail || "Erreur inconnue").replace(/"/g, "'").slice(0, 600);
+  mainWindow.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(
+    '<!DOCTYPE html><html><body style="display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#fef2f2;font-family:sans-serif"><div style="text-align:center;color:#991b1b;max-width:560px;padding:16px"><h2>Erreur</h2><p style="max-width:520px;margin:12px 0;color:#b91c1c;word-break:break-word">' +
+      d +
+      '</p><p style="font-size:12px;color:#7f1d1d;word-break:break-all">Log: ' + logPath + '</p><p style="font-size:13px;color:#991b1b">افتح ProfManager مرة أخرى؛ إن استمر الخطأ أرسل محتوى هذا الملف.</p></div></body></html>'
+  ));
+}
+
+function showLoadingPage() {
+  mainWindow.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(
+    '<!DOCTYPE html><html lang="ar"><head><meta charset="utf-8"><style>html,body{height:100%;margin:0}body{display:flex;align-items:center;justify-content:center;background:#0f172a;font-family:Segoe UI,sans-serif;color:#e2e8f0}.wrap{text-align:center}.spinner{width:44px;height:44px;margin:0 auto 18px;border:4px solid #334155;border-top-color:#38bdf8;border-radius:50%;animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}.t{font-size:15px;letter-spacing:.3px}</style></head><body><div class="wrap"><div class="spinner"></div><div class="t">جاري تشغيل ProfManager...</div></div></body></html>'
+  ));
+}
+
+function loadWithRetry(url, attempts) {
+  return new Promise((resolve) => {
+    let tries = 0;
+    let settled = false;
+    const cleanup = () => {
+      mainWindow.webContents.removeListener("did-fail-load", onFail);
+      mainWindow.webContents.removeListener("did-finish-load", onLoad);
+    };
+    const onLoad = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      log("page loaded try=" + tries);
+      resolve(true);
+    };
+    const onFail = (e, code, desc) => {
+      if (code === -3 || settled) return; // superseded navigation
+      log("did-fail-load try=" + tries + " code=" + code + " desc=" + desc);
+      if (tries >= attempts) {
+        settled = true;
+        cleanup();
+        resolve(false);
+        return;
+      }
+      // The server may still be starting (cold start) — retry shortly.
+      setTimeout(() => {
+        if (settled) return;
+        tries++;
+        mainWindow.loadURL(url);
+      }, 2000);
+    };
+    mainWindow.webContents.on("did-fail-load", onFail);
+    mainWindow.webContents.on("did-finish-load", onLoad);
+    tries++;
+    mainWindow.loadURL(url);
+  });
+}
+
 app.whenReady().then(async () => {
   log("ready");
 
   const STANDALONE_DIR = path.join(process.resourcesPath || __dirname, "standalone-server");
   log("standalone=" + STANDALONE_DIR);
   log("server exists=" + fs.existsSync(path.join(STANDALONE_DIR, "server.js")));
+
+  // Best-effort: exclude the app dir from Windows Defender so the server's cold
+  // module load is fast. Doesn't block startup; helps every future launch.
+  ensureDefenderExclusion(STANDALONE_DIR).then((ok) => log("defender exclusion ensured=" + ok));
 
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -312,49 +472,48 @@ app.whenReady().then(async () => {
     }
   });
 
-  try {
-    const { port, child } = await startServer(STANDALONE_DIR);
-    currentPort = port;
-    const ownsServer = !!child;
-    serverOwned = ownsServer;
+  // Show the window immediately with a styled loading page, then load the
+    // real app once the (possibly slow cold-starting) server is ready.
+    showLoadingPage();
+    mainWindow.once("ready-to-show", () => { log("window displayed (loading)"); mainWindow.show(); });
 
-    const lanIp = getLanIp();
-    if (lanIp && ownsServer) {
-      const ok = addFirewallRule(port);
-      log("scan address: http://" + lanIp + ":" + port + "  firewall=" + ok);
-      mainWindow.setTitle("ProfManager — scan: http://" + lanIp + ":" + port);
-    } else {
-      log("no LAN IP found (offline) or attached to existing server");
+    try {
+      const { port, child } = await startServer(STANDALONE_DIR);
+      currentPort = port;
+      const ownsServer = !!child;
+      serverOwned = ownsServer;
+
+      const lanIp = getLanIp();
+      if (lanIp && ownsServer) {
+        const ok = addFirewallRule(port);
+        log("scan address: http://" + lanIp + ":" + port + "  firewall=" + ok);
+        mainWindow.setTitle("ProfManager — scan: http://" + lanIp + ":" + port);
+      } else {
+        log("no LAN IP found (offline) or attached to existing server");
+      }
+
+      if (ownsServer) {
+        // USB scan (cable): phone scans cards, result shows on this computer.
+        startAdbReverse(port);
+        setupTray(port);
+      } else {
+        log("attached mode: window only, tray/adb handled by owning instance");
+      }
+
+      log("loading http://127.0.0.1:" + port + "/overview");
+      const loaded = await loadWithRetry("http://127.0.0.1:" + port + "/overview", 30);
+      if (!loaded) showErrorPage("Le serveur local n'a pas répondu après plusieurs tentatives. Vérifiez le fichier log puis relancez.");
+    } catch (err) {
+      log("ERR=" + (err.stack || err.message));
+      showErrorPage(err.message || "Erreur inconnue");
     }
-
-    if (ownsServer) {
-      // USB scan (cable): phone scans cards, result shows on this computer.
-      startAdbReverse(port);
-      setupTray(port);
-    } else {
-      log("attached mode: window only, tray/adb handled by owning instance");
-    }
-
-    log("loading http://127.0.0.1:" + port + "/overview");
-    mainWindow.loadURL("http://127.0.0.1:" + port + "/overview");
-    mainWindow.once("ready-to-show", () => { log("window displayed"); mainWindow.show(); });
-  } catch (err) {
-    log("ERR=" + (err.stack || err.message));
-    const logPath = LOG.replace(/\\/g, "/");
-    const detail = (err.message || "Erreur inconnue").replace(/"/g, "'").slice(0, 600);
-    mainWindow.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(
-      '<!DOCTYPE html><html><body style="display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#fef2f2;font-family:sans-serif"><div style="text-align:center;color:#991b1b;max-width:560px;padding:16px"><h2>Erreur</h2><p style="max-width:520px;margin:12px 0;color:#b91c1c;word-break:break-word">' +
-        detail +
-        '</p><p style="font-size:12px;color:#7f1d1d;word-break:break-all">Log: ' + logPath + '</p><p style="font-size:13px;color:#991b1b">افتح ProfManager مرة أخرى؛ إن استمر الخطأ أرسل محتوى هذا الملف.</p></div></body></html>'
-    ));
-    mainWindow.once("ready-to-show", () => mainWindow.show());
-  }
 });
 
 app.on("window-all-closed", () => {
-  if (!isQuitting) {
+  if (!isQuitting && serverOwned) {
     log("all windows closed, keeping app alive in tray");
   } else {
+    log("window-all-closed: quitting (serverOwned=" + serverOwned + ")");
     killServer();
     app.quit();
   }

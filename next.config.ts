@@ -17,6 +17,7 @@ const nextConfig: NextConfig = {
   output: "standalone",
   serverExternalPackages: ["sql.js"],
   allowedDevOrigins: devOrigins(),
+  turbopack: { root: __dirname },
 };
 
 export default nextConfig;
