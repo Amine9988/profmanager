@@ -111,7 +111,7 @@ function writeAppUpdateYml() {
 
 // Step 4a: Build unpackaged app directory
 console.log("\n[4a/4] Building unpackaged app directory...");
-run("node node_modules\\electron-builder\\cli.js --dir", ELECTRON);
+run("npx electron-builder --dir", ELECTRON);
 writeAppUpdateYml();
 
 // Step 4b: Copy node_modules with junctions intact, then resolve all junctions for distribution
@@ -269,7 +269,7 @@ console.log("\n[4b5/4] Slimming production node_modules...");
 // Step 4c: Build NSIS installer from the modified unpackaged app
 console.log("\n[4c/4] Building NSIS installer from unpackaged app...");
 writeAppUpdateYml();
-run("node node_modules\\electron-builder\\cli.js --win --prepackaged=dist/win-unpacked", ELECTRON);
+run("npx electron-builder --win --prepackaged=dist/win-unpacked", ELECTRON);
 
 console.log("\n=== Done ===");
 console.log("Output files:");
