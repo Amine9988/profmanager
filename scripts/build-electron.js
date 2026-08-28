@@ -103,10 +103,29 @@ console.log("  hostname default set to 0.0.0.0 (LAN scanning enabled)");
 
 function writeAppUpdateYml() {
   const src = path.join(ELECTRON, "build", "app-update.yml");
-  const dest = path.join(ELECTRON, "dist", "win-unpacked", "resources", "app-update.yml");
-  fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.copyFileSync(src, dest);
-  console.log("  wrote " + dest);
+  if (!fs.existsSync(src)) {
+    console.log("  skip app-update.yml (src not found)");
+    return;
+  }
+  const destWin = path.join(ELECTRON, "dist", "win-unpacked", "resources", "app-update.yml");
+  try {
+    fs.mkdirSync(path.dirname(destWin), { recursive: true });
+    fs.copyFileSync(src, destWin);
+    console.log("  wrote " + destWin);
+  } catch (e) {
+    console.log("  skip win app-update.yml:", e.message);
+  }
+  // Also for mac (if built)
+  for (const dir of ["mac", "mac-arm64"]) {
+    const destMac = path.join(ELECTRON, "dist", dir, "ProfManager.app", "Contents", "Resources", "app-update.yml");
+    try {
+      if (fs.existsSync(path.join(ELECTRON, "dist", dir))) {
+        fs.mkdirSync(path.dirname(destMac), { recursive: true });
+        fs.copyFileSync(src, destMac);
+        console.log("  wrote " + destMac);
+      }
+    } catch {}
+  }
 }
 
 // Step 4a: Build unpackaged app directory
@@ -114,6 +133,7 @@ console.log("\n[4a/4] Building unpackaged app directory...");
 run("npx electron-builder --dir", ELECTRON);
 writeAppUpdateYml();
 
+if (process.platform === 'win32') {
 // Step 4b: Copy node_modules with junctions intact, then resolve all junctions for distribution
 console.log("\n[4b/4] Copying node_modules into unpackaged app...");
 const RESOURCES_NM = path.join(WIN_UNPACKED, "resources", "standalone-server", "node_modules");
@@ -270,6 +290,9 @@ console.log("\n[4b5/4] Slimming production node_modules...");
 console.log("\n[4c/4] Building NSIS installer from unpackaged app...");
 writeAppUpdateYml();
 run("npx electron-builder --win --prepackaged=dist/win-unpacked", ELECTRON);
+} else {
+  console.log("  skip win-specific steps on mac");
+}
 
 console.log("\n=== Done ===");
 console.log("Output files:");
