@@ -18,16 +18,15 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --no-frozen-lockfile
       - run: pnpm build
+        env: {CI: "false"}
       - run: node scripts/build-electron.js
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        env: {CSC_IDENTITY_AUTO_DISCOVERY: "false", CI: "false"}
       - name: Build DMG / ZIP (mac)
         run: npx electron-builder --mac --x64 --arm64
         working-directory: electron
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        env: {CSC_IDENTITY_AUTO_DISCOVERY: "false"}
       - name: Publish to R2 (permanent auto-update)
         if: startsWith(github.ref, 'refs/tags/v')
         env:
@@ -38,10 +37,11 @@ jobs:
           R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
         run: node scripts/publish-r2-mac.js
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: ProfManager-Mac-${{ github.ref_name }}
           path: |
             electron/dist/*.dmg
             electron/dist/*.zip
             electron/dist/*.blockmap
-            electron/dist/latest-mac.yml
+            electron/dist/latest*.yml
