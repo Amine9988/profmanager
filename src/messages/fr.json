@@ -133,7 +133,8 @@
     "payment_method": "Méthode de paiement",
     "deleting": "Suppression...",
     "selected": "Sélectionné",
-    "select_all": "Tout sélectionner"
+    "select_all": "Tout sélectionner",
+    "none": "Aucun"
   },
   "nav": {
     "overview": "Vue d'ensemble",
@@ -152,6 +153,7 @@
     "certificates": "Attestations",
     "teachers": "Enseignants",
     "groups": "Groupes",
+    "trash": "Corbeille",
     "settings": "Paramètres",
     "backup": "Sauvegarde",
     "language": "Langue",
@@ -400,7 +402,14 @@
     "bulk_print": "Imprimer les cartes",
     "remaining_sessions_label": "Séances restantes",
     "consumed_sessions_label": "Séances utilisées",
-    "consumed_sessions_none": "Aucune séance payée"
+    "consumed_sessions_none": "Aucune séance payée",
+    "groups_label": "Groupes",
+    "groups_add_placeholder": "Ajouter un groupe…",
+    "groups_all_added": "Tous les groupes sont ajoutés",
+    "client_type_label": "Type de client",
+    "client_institution": "Élève — client de l'établissement",
+    "client_teacher": "Élève — client de l'enseignant",
+    "client_type_hint": "Type par défaut des nouveaux groupes — modifiable par groupe via l'icône de l'étiquette"
   },
   "groups": {
     "teacher": "Enseignant",
@@ -496,7 +505,7 @@
     "students_label": "Élèves",
     "no_groups_desc": "Créez votre premier groupe pour commencer à organiser vos cours.",
     "recent_sessions": "Dernières séances",
-        "session_completed": "Terminée",
+    "session_completed": "Terminée",
     "session_cancelled": "Annulée",
     "session_scheduled": "Prévue",
     "updated_success": "Groupe modifié avec succès",
@@ -532,7 +541,12 @@
     "makeup_session_title": "Ajouter une séance de rattrapage",
     "add_makeup_session": "Ajouter la séance",
     "regular_session": "Ordinaire",
-    "no_rooms_hint": "Aucune salle disponible. Ajoutez une salle d'abord."
+    "no_rooms_hint": "Aucune salle disponible. Ajoutez une salle d'abord.",
+    "enroll_hint": "Facultatif — le groupe est sélectionné lors de la création de l'élève",
+    "expires_label": "Date de fin du groupe",
+    "expires_hint": "Si non defini, le groupe se termine a la fin de l annee scolaire",
+    "expires_required": "Choisissez une date de fin du groupe",
+    "slot_times_required": "Renseignez le jour, l heure de debut et de fin pour chaque creneau"
   },
   "attendance": {
     "title": "Présence",
@@ -677,7 +691,11 @@
     "payment_date": "Date du paiement",
     "group": "Groupe",
     "overdue_aggregate": "Retards du mois : {count} élève(s) — {amount}",
-    "save": "Enregistrer le paiement"
+    "save": "Enregistrer le paiement",
+    "discount_label": "Remise (%)",
+    "base_price": "Prix de base",
+    "discount_value": "Remise ({pct}%)",
+    "due_after_discount": "Dû après remise"
   },
   "subscriptions": {
     "setup": "Configurer abonnement",
@@ -751,6 +769,8 @@
     "downloading": "Téléchargement",
     "downloadUpdate": "Télécharger la mise à jour",
     "installUpdate": "Installer et redémarrer",
+    "downloadInstaller": "Télécharger l'installateur",
+    "updateDesktopOnly": "La vérification des mises à jour est disponible dans l'application installée.",
     "updateError": "Erreur de mise à jour : {msg}",
     "overduePayments": "Paiements en retard",
     "school_year_start": "Début de l'année scolaire",
@@ -789,7 +809,26 @@
     "export_students": "Registre des élèves",
     "export_students_desc": "Élèves et leurs frais",
     "export_success": "Fichier Excel téléchargé.",
-    "export_error": "Échec du téléchargement du fichier Excel."
+    "export_error": "Échec du téléchargement du fichier Excel.",
+    "password_title": "Changer le mot de passe",
+    "password_hint": "Mot de passe requis pour les opérations sensibles (suppression, gestion de caisse).",
+    "password_current": "Mot de passe actuel",
+    "password_current_placeholder": "Entrez le mot de passe actuel",
+    "password_new": "Nouveau mot de passe",
+    "password_new_placeholder": "Entrez le nouveau mot de passe",
+    "password_confirm": "Confirmer le mot de passe",
+    "password_confirm_placeholder": "Confirmez le nouveau mot de passe",
+    "password_save": "Enregistrer le mot de passe",
+    "password_changed": "Mot de passe modifié avec succès",
+    "password_wrong_current": "Mot de passe actuel incorrect",
+    "password_no_match": "Les mots de passe ne correspondent pas",
+    "password_too_short": "Le mot de passe doit contenir au moins 4 caractères",
+    "password_fill_all": "Veuillez remplir tous les champs",
+    "password_match": "Les mots de passe correspondent",
+    "password_forgot": "Mot de passe oublié ? Réinitialiser",
+    "password_reset_confirm": "Réinitialiser le mot de passe à profmanager1234 ?",
+    "password_reset_success": "Mot de passe réinitialisé à profmanager1234",
+    "password_enter_default": "Entrez le mot de passe par défaut profmanager1234 pour confirmer:"
   },
   "validation": {
     "required": "Le champ {field} est requis.",
@@ -853,7 +892,8 @@
     "backup_error": "Erreur lors de la création de la sauvegarde",
     "restore_error": "Erreur lors de la restauration",
     "permission_denied": "Permission refusée : {key}",
-    "room_conflict": "Conflit de salle"
+    "room_conflict": "Conflit de salle",
+    "session_overlap": "Une séance identique existe déjà pour ce groupe (même jour et même horaire) — modifiez l'horaire pour ajouter une autre séance"
   },
   "packages": {
     "new_title": "Nouveau forfait",
@@ -945,7 +985,8 @@
       "teachers_desc": "Enseignants et affectations",
       "groups_desc": "Groupes et emplois du temps",
       "certificates_desc": "Attestations et impressions",
-      "settings_desc": "Configuration de l'application"
+      "settings_desc": "Configuration de l'application",
+      "trash_desc": "Éléments supprimés et restauration"
     }
   },
   "notifications": {
@@ -1126,7 +1167,13 @@
     "no_dues_sessions": "Aucune séance terminée sur cette période",
     "pay_remaining": "Payer le dû ({amount})",
     "monthly_note": "Salaire mensuel : {months} mois × le montant défini",
-    "dues_hint": "Montant restant : {amount}"
+    "dues_hint": "Montant restant : {amount}",
+    "rate_institution_label": "Pourcentage élève (client établissement) %",
+    "rate_teacher_label": "Pourcentage élève (client enseignant) %",
+    "rate_hint": "Le pourcentage s'applique au prix du groupe pour chaque séance avec présence — chaque séance supplémentaire augmente le dû",
+    "rate_institution_short": "Client établissement",
+    "rate_teacher_short": "Client enseignant",
+    "overpaid_hint": "Trop versé : les paiements dépassent le dû de {amount}"
   },
   "levels": {
     "title": "Niveaux",
@@ -1182,8 +1229,15 @@
     "delete_confirm": "Êtes-vous sûr de vouloir supprimer ce mouvement ? Cette action est irréversible.",
     "auto_generated_hint": "Cette transaction a été générée automatiquement. Utilisez le module Paiements pour la modifier.",
     "category_payment": "Paiement",
+    "category_inscription": "Inscription",
+    "category_sale": "Vente",
+    "category_other_income": "Autre revenu",
     "category_salary": "Salaire",
+    "category_rent": "Loyer",
+    "category_electricity": "Électricité",
     "category_supplies": "Fournitures",
+    "category_maintenance": "Entretien",
+    "category_other_expense": "Autre dépense",
     "category_general": "Général",
     "description_payment": "Paiement",
     "description_additional": "Paiement supplémentaire",
@@ -1259,5 +1313,27 @@
     "description": "La plateforme tout-en-un pour les professeurs de cours particuliers : élèves, groupes, présence, paiements, forfaits et reçus PDF.",
     "og_description": "La plateforme tout-en-un pour les professeurs de cours particuliers : élèves, groupes, présence, paiements.",
     "manifest_description": "Gestion de cours particuliers — élèves, groupes, présence, paiements"
+  },
+  "trash": {
+    "title": "Corbeille",
+    "empty": "La corbeille est vide",
+    "empty_hint": "Les éléments supprimés apparaîtront ici",
+    "empty_trash": "Vider la corbeille",
+    "empty_trash_title": "Vider la corbeille",
+    "empty_trash_confirm": "Supprimer définitivement tous les éléments de la corbeille ? Cette action est irréversible.",
+    "empty_success": "Corbeille vidée avec succès",
+    "restore": "Restaurer",
+    "restore_success": "Élément restauré avec succès",
+    "delete_permanently_title": "Supprimer définitivement",
+    "delete_permanently_confirm": "Cet élément sera définitivement supprimé. Cette action est irréversible.",
+    "delete_permanently_success": "Élément supprimé définitivement",
+    "deleted_at": "Supprimé le",
+    "payment": "Paiement",
+    "movement": "Mouvement de caisse",
+    "continue": "Continuer",
+    "enter_password": "Confirmer par mot de passe",
+    "password_placeholder": "Entrez votre mot de passe",
+    "wrong_password": "Mot de passe incorrect",
+    "confirm": "Confirmer"
   }
 }

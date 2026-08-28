@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, Users, CalendarCheck, Wallet, Banknote, AlertTriangle, GraduationCap, Settings } from "lucide-react";
+import { LayoutDashboard, Users, CalendarCheck, Wallet, Banknote, AlertTriangle, GraduationCap, Settings, Trash2 } from "lucide-react";
 
 const navItems = [
   { href: "/overview", key: "overview", icon: LayoutDashboard },
@@ -14,6 +14,7 @@ const navItems = [
   { href: "/caisse", key: "caisse", icon: Banknote },
   { href: "/overdue", key: "overdue", icon: AlertTriangle },
   { href: "/teachers", key: "teachers", icon: GraduationCap },
+  { href: "/trash", key: "trash", icon: Trash2 },
   { href: "/settings", key: "settings", icon: Settings },
 ];
 

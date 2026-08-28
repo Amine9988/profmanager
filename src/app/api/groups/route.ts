@@ -11,8 +11,13 @@ export async function GET(req: NextRequest) {
     const withStudents = searchParams.get("withStudents") === "true";
 
     const selectCols = withStudents
-      ? "id, name, level, maxCapacity, status, pricePerSession, priceType, roomId, group_students(*, students(id, fullName))"
-      : "id, name, level, maxCapacity, status, pricePerSession, priceType, roomId";
+      ? "id, name, level, maxCapacity, status, pricePerSession, priceType, roomId, expiresAt, group_students(*, students(id, fullName))"
+      : "id, name, level, maxCapacity, status, pricePerSession, priceType, roomId, expiresAt";
+
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
+    const limit = Math.min(500, Math.max(1, parseInt(searchParams.get("limit") || "100", 10) || 100));
+    const offset = (page - 1) * limit;
+    const hasPagination = searchParams.get("page") !== null || searchParams.get("limit") !== null;
 
     let query = supabase
       .from("groups")
@@ -21,6 +26,8 @@ export async function GET(req: NextRequest) {
       .order("name");
 
     if (status) query = query.eq("status", status);
+    if (hasPagination) query = (query as any).range(offset, offset + limit - 1);
+    else query = (query as any).limit(200);
 
     const { data: groups } = await query;
 
@@ -83,6 +90,14 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date().toISOString();
+    let expiresAt: string | null = body.expiresAt || null;
+    if (!expiresAt) {
+      try {
+        const { getSchoolYearSettings } = await import("@/server/actions/sessions");
+        const sy = await getSchoolYearSettings();
+        expiresAt = sy?.schoolYearEnd || null;
+      } catch {}
+    }
     const { data: group, error } = await supabase
       .from("groups")
       .insert({
@@ -96,6 +111,7 @@ export async function POST(request: NextRequest) {
         priceType: body.priceType || "per_session",
         status: "active",
         roomId: roomId,
+        expiresAt: expiresAt || null,
         createdAt: now,
         updatedAt: now,
       })
@@ -153,6 +169,14 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
+    let patchExpiresAt: string | null = body.expiresAt ?? null;
+    if (body.expiresAt === "" || body.expiresAt === undefined) {
+      try {
+        const { getSchoolYearSettings } = await import("@/server/actions/sessions");
+        const sy = await getSchoolYearSettings();
+        patchExpiresAt = sy?.schoolYearEnd || null;
+      } catch {}
+    }
     const { data, error } = await supabase
       .from("groups")
       .update({
@@ -163,6 +187,7 @@ export async function PATCH(request: NextRequest) {
         pricePerSession: body.pricePerSession || null,
         priceType: body.priceType || "per_session",
         roomId: newRoomId,
+        expiresAt: patchExpiresAt || null,
         updatedAt: new Date().toISOString(),
       })
       .eq("id", id)

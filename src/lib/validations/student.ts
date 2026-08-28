@@ -13,6 +13,7 @@ export const studentSchema = z.object({
   monthlyFee: z.coerce.number().min(0).default(0),
   subscriptionStart: z.string().optional().nullable(),
   billingType: z.enum(["monthly", "per_session"]).default("monthly"),
+  clientType: z.enum(["institution", "teacher"]).default("institution"),
 });
 
 export type StudentInput = z.infer<typeof studentSchema>;

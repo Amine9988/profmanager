@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { deleteStudent } from "@/server/actions/students";
 import Link from "next/link";
 import { StudentEditDialog } from "@/components/students/student-edit-dialog";
+import type { GroupOption } from "@/components/students/student-groups-picker";
 import { CardDialog } from "@/components/students/card-dialog";
 import { StudentRecordDialog } from "@/components/students/student-record-dialog";
 import { toast } from "sonner";
@@ -29,27 +30,37 @@ type StudentRow = {
   monthlyFee: number;
   subscriptionStart: string | null;
   status: string;
-  groupStudents: { group: { name: string } }[];
+  clientType?: string | null;
+  groupStudents: { clientType?: string | null; group: { id: string; name: string } | null }[];
 };
 
-export function StudentsTable({ data }: { data: StudentRow[] }) {
+export function StudentsTable({ data, groups = [] }: { data: StudentRow[]; groups?: GroupOption[] }) {
   const { t, direction } = useI18n();
   const router = useRouter();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const align = direction === "rtl" ? "right" : "left";
+  const PAGE_SIZE = 50;
+  const [page, setPage] = useState(1);
 
-  const filtered = data.filter((s) => {
-    if (search) {
-      const q = search.toLowerCase();
-      const match =
-        s.fullName.toLowerCase().includes(q) ||
-        (s.phone || "").includes(q) ||
-        (s.gradeLevel || "").toLowerCase().includes(q);
-      if (!match) return false;
-    }
-    return true;
-  });
+  const filtered = useMemo(() => {
+    return data.filter((s) => {
+      if (search) {
+        const q = search.toLowerCase();
+        const match =
+          s.fullName.toLowerCase().includes(q) ||
+          (s.phone || "").includes(q) ||
+          (s.gradeLevel || "").toLowerCase().includes(q);
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [data, search]);
+
+  useEffect(() => { setPage(1); }, [search]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = useMemo(() => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [filtered, page]);
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [totalPages, page]);
 
   function toggleOne(id: string) {
     setSelectedIds((prev) =>
@@ -202,7 +213,7 @@ export function StudentsTable({ data }: { data: StudentRow[] }) {
                   </td>
                 </tr>
               )}
-              {filtered.map((student) => (
+              {paginated.map((student) => (
                 <tr
                   key={student.id}
                   className={cn(
@@ -232,6 +243,10 @@ export function StudentsTable({ data }: { data: StudentRow[] }) {
                   <td className="px-3 py-3">
                     <div className="flex items-center justify-center gap-1">
                       <StudentEditDialog
+                        allGroups={groups}
+                        enrolledGroups={(student.groupStudents || [])
+                          .filter((gs) => gs.group)
+                          .map((gs) => ({ id: gs.group!.id, name: gs.group!.name, clientType: (gs.clientType as "institution" | "teacher" | null) ?? undefined }))}
                         student={{
                           id: student.id,
                           fullName: student.fullName,
@@ -244,6 +259,7 @@ export function StudentsTable({ data }: { data: StudentRow[] }) {
                           notes: student.notes,
                           monthlyFee: student.monthlyFee,
                           subscriptionStart: student.subscriptionStart ? new Date(student.subscriptionStart) : null,
+                          clientType: student.clientType ?? null,
                         }}
                       />
                       <CardDialog studentId={student.id} />
@@ -260,10 +276,20 @@ export function StudentsTable({ data }: { data: StudentRow[] }) {
         </div>
       </div>
 
-      <div className={cn("flex items-center justify-between py-3 text-sm text-muted-foreground", align === "right" ? "text-right" : "text-left")}>
-        {selectedIds.length > 0
-          ? t("students.selected_count", { count: selectedIds.length, total: filtered.length })
-          : t("students.total_students", { count: filtered.length })}
+      <div className={cn("flex flex-col sm:flex-row items-center justify-between gap-2 py-3 text-sm text-muted-foreground", align === "right" ? "text-right" : "text-left")}>
+        <span>
+          {selectedIds.length > 0
+            ? t("students.selected_count", { count: selectedIds.length, total: filtered.length })
+            : t("students.total_students", { count: filtered.length })}
+          {filtered.length > PAGE_SIZE && ` — ${t("common.page") || "Page"} ${page}/${totalPages}`}
+        </span>
+        {totalPages > 1 && (
+          <div className="flex items-center gap-1">
+            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>{t("common.previous") || "السابق"}</Button>
+            <span className="px-2 text-xs">{page} / {totalPages}</span>
+            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}>{t("common.next") || "التالي"}</Button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTenantContext } from "@/lib/auth";
+import { computeTeacherDues, type TeacherDuesResult } from "@/lib/teacher-dues";
 import * as XLSX from "xlsx";
 
 const HEADER_BG = "FF1D4ED8";
@@ -167,81 +168,22 @@ export async function GET(req: NextRequest) {
         .eq("tenantId", tenantId)
         .order("createdAt", { ascending: true });
 
-      const { data: groups } = await supabase
-        .from("groups")
-        .select("id, teacherId")
-        .eq("tenantId", tenantId);
-
-      const teacherGroups = new Map<string, string[]>();
-      const allGroupIds: string[] = [];
-      for (const g of groups || []) {
-        allGroupIds.push(g.id);
-        if (!g.teacherId) continue;
-        const list = teacherGroups.get(g.teacherId) || [];
-        list.push(g.id);
-        teacherGroups.set(g.teacherId, list);
+      // Single source of truth: same computation as the dues dialog.
+      const computed: (TeacherDuesResult | null)[] = [];
+      for (const t of teachers || []) {
+        computed.push(await computeTeacherDues(supabase, tenantId, t.id, null));
       }
 
-      let allSessions: any[] = [];
-      let presentBySession = new Map<string, number>();
-      if (allGroupIds.length > 0) {
-        const { data: s } = await supabase
-          .from("sessions")
-          .select("id, groupId, sessionDate, startTime, endTime, status")
-          .eq("tenantId", tenantId)
-          .in("groupId", allGroupIds);
-        allSessions = s || [];
-        const sessionIds = allSessions.map((x) => x.id);
-        if (sessionIds.length > 0) {
-          const { data: a } = await supabase
-            .from("attendances")
-            .select("sessionId, status")
-            .eq("tenantId", tenantId)
-            .in("sessionId", sessionIds);
-          presentBySession = new Map<string, number>();
-          for (const att of a || []) {
-            if (att.status === "present" || att.status === "late") {
-              presentBySession.set(att.sessionId, (presentBySession.get(att.sessionId) || 0) + 1);
-            }
-          }
-        }
-      }
-
-      const { data: teacherPayments } = await supabase
-        .from("teacher_payments")
-        .select("teacherId, amount, status")
-        .eq("tenantId", tenantId);
-
-      const paidByTeacher = new Map<string, number>();
-      for (const p of teacherPayments || []) {
-        if (p.status !== "paid") continue;
-        paidByTeacher.set(p.teacherId, (paidByTeacher.get(p.teacherId) || 0) + Number(p.amount || 0));
-      }
-
-      const now = Date.now();
       const rows: (string | number)[][] = (teachers || []).map((t, i) => {
+        const res = computed[i];
         const rate = Number(t.salaryAmount) || 0;
-        const salaryType = t.salaryType || "fixed";
-        const groupIds = teacherGroups.get(t.id) || [];
-        const taught = allSessions.filter((s) => {
-          if (!groupIds.includes(s.groupId) || s.status === "cancelled") return false;
-          const time = s.endTime || s.startTime || "00:00";
-          const endMs = new Date(`${s.sessionDate}T${time}`).getTime();
-          return !isNaN(endMs) && endMs < now;
-        });
-
-        let earned = 0;
-        if (salaryType === "per_student") {
-          earned = taught.reduce((sum, s) => sum + (presentBySession.get(s.id) || 0) * rate, 0);
-        } else if (rate > 0) {
-          earned = new Set(taught.map((s) => String(s.sessionDate).slice(0, 7))).size * rate;
-        }
-        const paid = paidByTeacher.get(t.id) || 0;
+        const paid = res?.totals.paid ?? 0;
+        const earned = res?.totals.earned ?? 0;
         return [
           i + 1,
           [t.firstName, t.lastName].filter(Boolean).join(" "),
           t.phone || "",
-          SALARY_LABELS[salaryType] || salaryType,
+          SALARY_LABELS[t.salaryType || "fixed"] || t.salaryType,
           rate,
           paid,
           earned - paid,

@@ -253,12 +253,13 @@ export async function getUpcomingSessions() {
 
   const { data } = await supabase
     .from("sessions")
-    .select("*, groups(*, subjects(*))")
+    .select("id, sessionDate, startTime, endTime, status, groupId, groups(id, name, subjects(id, name))")
     .eq("tenantId", tenantId)
     .eq("status", "scheduled")
     .gte("sessionDate", todayStr)
     .order("sessionDate", { ascending: true })
-    .order("startTime", { ascending: true });
+    .order("startTime", { ascending: true })
+    .limit(100);
 
   return toCamelArray(data || []).map((s: any) => ({
     ...s,

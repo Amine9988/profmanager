@@ -49,6 +49,7 @@ export default async function GroupsPage() {
                   roomId: g.roomId ?? null,
                   sessionsIncluded: g.sessionsIncluded ?? null,
                   color: g.color ?? null,
+                  expiresAt: (g as any).expiresAt ?? null,
                 }}
                 subjects={subjects}
                 rooms={rooms}

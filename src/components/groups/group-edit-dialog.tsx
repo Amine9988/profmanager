@@ -16,15 +16,16 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Pencil } from "lucide-react";
+import { Pencil, Plus, DoorOpen, Users, GraduationCap, CalendarClock, X } from "lucide-react";
 import { toast } from "sonner";
 import { LevelSelect } from "@/components/shared/level-select";
 import { useT } from "@/lib/i18n";
 import { TeacherSelect } from "@/components/shared/teacher-select";
+import { normalizeTime, toDateInputValue } from "@/lib/group-form";
 
 type Subject = { id: string; name: string; color?: string | null };
 type Room = { id: string; name: string; code: string };
+type Slot = { id?: string; dayOfWeek: number; startTime: string; endTime: string };
 
 type GroupData = {
   id: string;
@@ -38,6 +39,8 @@ type GroupData = {
   teacherId: string | null;
   roomId: string | null;
   color?: string | null;
+  expiresAt?: string | null;
+  scheduleSlots?: Slot[];
 };
 
 export const GROUP_COLOR_PALETTE = [
@@ -74,10 +77,13 @@ export function GroupEditDialog({ group, subjects, rooms }: { group: GroupData; 
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [subjectId, setSubjectId] = useState<string>(group.subjectId ?? "");
-  const [priceType, setPriceType] = useState(group.priceType);
   const [teacherId, setTeacherId] = useState<string>(group.teacherId ?? "");
   const [roomId, setRoomId] = useState<string>(group.roomId ?? "");
   const [color, setColor] = useState<string>(group.color || GROUP_COLOR_PALETTE[0]);
+  const [slots, setSlots] = useState<Slot[]>([]);
+  const [useExpiresAt, setUseExpiresAt] = useState<boolean>(!!toDateInputValue(group.expiresAt));
+  const [expiresAt, setExpiresAt] = useState<string>(toDateInputValue(group.expiresAt));
+  const dayNames = t("groups.dayNames").split("|");
   const [state, formAction, pending] = useActionState<ActionResult, FormData>(updateGroup, {});
 
   useEffect(() => {
@@ -95,13 +101,50 @@ export function GroupEditDialog({ group, subjects, rooms }: { group: GroupData; 
   useEffect(() => {
     if (open) {
       setColor(group.color || subjects.find((s) => s.id === subjectId)?.color || GROUP_COLOR_PALETTE[0]);
+      setSlots(((group.scheduleSlots ?? []) as Slot[]).map((s) => ({
+        id: s.id,
+        dayOfWeek: Number(s.dayOfWeek) || 0,
+        startTime: normalizeTime(s.startTime) || "",
+        endTime: normalizeTime(s.endTime) || "",
+      })));
+      setUseExpiresAt(!!toDateInputValue(group.expiresAt));
+      setExpiresAt(toDateInputValue(group.expiresAt));
     }
-  }, [open, group, subjectId, subjects]);
+  }, [open, group]);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+    formData.set("subjectId", subjectId || "");
+    formData.set("teacherId", teacherId || "");
+    formData.set("roomId", roomId || "");
+    formData.set("useExpiresAt", useExpiresAt ? "1" : "0");
+    const cleanExpires = useExpiresAt ? (expiresAt || "").trim() : "";
+    formData.set("expiresAt", cleanExpires);
+    formData.set("expiresAtField", cleanExpires);
+    formData.set("slotCount", String(slots.length));
+    for (let i = 0; i < slots.length; i++) {
+      const s = slots[i];
+      const st = normalizeTime(s.startTime) || String(s.startTime || "").trim();
+      const et = normalizeTime(s.endTime) || String(s.endTime || "").trim();
+      formData.set(`slot_day_${i}`, String(s.dayOfWeek));
+      formData.set(`slot_start_${i}`, st);
+      formData.set(`slot_end_${i}`, et);
+      if (s.id) formData.set(`slot_id_${i}`, s.id);
+    }
     startTransition(() => formAction(formData));
+  }
+
+  function addSlot() {
+    setSlots((prev) => [...prev, { dayOfWeek: 0, startTime: "16:00", endTime: "18:00" }]);
+  }
+
+  function updateSlot(i: number, patch: Partial<Slot>) {
+    setSlots((prev) => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
+  }
+
+  function removeSlot(i: number) {
+    setSlots((prev) => prev.filter((_, idx) => idx !== i));
   }
 
   return (
@@ -117,31 +160,65 @@ export function GroupEditDialog({ group, subjects, rooms }: { group: GroupData; 
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <input type="hidden" name="groupId" value={group.id} />
-          <input type="hidden" name="teacherId" value={teacherId} />
-          <input type="hidden" name="roomId" value={roomId} />
+          <input type="hidden" name="priceType" value="monthly" />
 
           <div className="space-y-2">
             <Label htmlFor="name">{t("groups.name_label")}</Label>
-            <Input id="name" name="name" required defaultValue={group.name} />
+            <Input id="name" name="name" required defaultValue={group.name} placeholder={t("groups.name_placeholder")} />
           </div>
 
-          <div className="space-y-2">
-            <Label>{t("groups.teacher")}</Label>
-            <TeacherSelect value={teacherId} onChange={setTeacherId} />
-          </div>
-
-          <div className="space-y-2">
-            <Label>{t("groups.room")}</Label>
-            {rooms && rooms.length > 0 ? (
-              <select value={roomId} onChange={(e) => setRoomId(e.target.value)}
-                className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm">
-                <option value="">{t("groups.room_none")}</option>
-                {rooms.map((r) => (
-                  <option key={r.id} value={r.id}>{r.name} ({r.code})</option>
+          {subjects.length > 0 && (
+            <div className="space-y-2">
+              <Label htmlFor="subjectId">{t("groups.subject_label")}</Label>
+              <select
+                id="subjectId"
+                name="subjectId"
+                value={subjectId}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setSubjectId(v);
+                  const s = subjects.find((x) => x.id === v);
+                  if (s?.color) setColor(s.color);
+                }}
+                className="flex h-9 w-full min-w-0 rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm outline-none focus-visible:border-ring focus-visible:ring-ring/40 focus-visible:ring-[3px]"
+              >
+                <option value="">{t("groups.subject_placeholder")}</option>
+                {subjects.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
                 ))}
               </select>
+              <input type="hidden" name="subjectId" value={subjectId} />
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label><GraduationCap className="size-3.5 inline mr-1" />{t("groups.teacher")}</Label>
+            <TeacherSelect value={teacherId} onChange={setTeacherId} />
+            <input type="hidden" name="teacherId" value={teacherId} />
+            <p className="text-xs text-muted-foreground">{t("groups.teacher_optional")}</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label><DoorOpen className="size-3.5 inline mr-1" />{t("groups.room")}</Label>
+            {rooms && rooms.length > 0 ? (
+              <>
+                <select
+                  id="roomId"
+                  name="roomId"
+                  value={roomId}
+                  onChange={(e) => setRoomId(e.target.value)}
+                  className="flex h-9 w-full min-w-0 rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm transition-all duration-200 focus-visible:border-ring focus-visible:ring-ring/40 focus-visible:ring-[3px] focus-visible:shadow-md outline-none">
+                  <option value="">{t("groups.room_none")}</option>
+                  {rooms.map((r) => (
+                    <option key={r.id} value={r.id}>{r.name} ({r.code})</option>
+                  ))}
+                </select>
+                <input type="hidden" name="roomId" value={roomId} />
+              </>
             ) : (
-              <div className="flex items-center justify-between gap-3 rounded-md border border-dashed border-border bg-muted/40 px-3 py-2.5 text-sm">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-muted/40 px-3 py-2.5 text-sm">
                 <span className="text-xs text-muted-foreground">{t("groups.no_rooms_hint")}</span>
                 <Link href="/rooms" className="shrink-0 text-xs font-medium text-primary hover:underline">
                   {t("rooms_page.new_room")}
@@ -150,28 +227,73 @@ export function GroupEditDialog({ group, subjects, rooms }: { group: GroupData; 
             )}
           </div>
 
-          {subjects.length > 0 && (
-            <div className="space-y-2">
-              <Label htmlFor="subjectId">{t("groups.subject_label")}</Label>
-              <input type="hidden" name="subjectId" value={subjectId} />
-              <Select value={subjectId} onValueChange={(v) => {
-                setSubjectId(v);
-                const s = subjects.find((x) => x.id === v);
-                if (s?.color) setColor(s.color);
-              }}>
-                <SelectTrigger className="w-full" id="subjectId">
-                  <SelectValue placeholder={t("groups.subject_placeholder")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {subjects.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+          <input type="hidden" name="slotCount" value={slots.length} />
+          <div className="space-y-2">
+            <Label><CalendarClock className="size-3.5 inline mr-1" />{t("groups.schedule")}</Label>
+            {slots.length === 0 && (
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-muted/40 px-3 py-2.5">
+                <span className="text-xs text-muted-foreground">{t("groups.no_slots")}</span>
+                <Button type="button" variant="outline" size="sm" onClick={addSlot}>
+                  <Plus className="size-3.5" /> {t("groups.add_slot")}
+                </Button>
+              </div>
+            )}
+            {slots.length > 0 && (
+              <div className="space-y-2 pt-1">
+                {slots.map((slot, i) => (
+                  <div key={slot.id ?? `new-${i}`} className="rounded-lg border border-input p-2.5 space-y-2">
+                    {slot.id && <input type="hidden" name={`slot_id_${i}`} value={slot.id} />}
+                    <input type="hidden" name={`slot_day_${i}`} value={String(slot.dayOfWeek)} />
+                    <input type="hidden" name={`slot_start_${i}`} value={slot.startTime} />
+                    <input type="hidden" name={`slot_end_${i}`} value={slot.endTime} />
+                    <div className="grid grid-cols-3 items-end gap-2">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">{t("groups.day")}</Label>
+                        <select
+                          value={slot.dayOfWeek}
+                          name={`slot_day_${i}`}
+                          onChange={(e) => updateSlot(i, { dayOfWeek: parseInt(e.target.value, 10) })}
+                          className="flex h-9 w-full min-w-0 rounded-lg border border-input bg-background px-2 py-1 text-sm shadow-sm outline-none focus-visible:border-ring focus-visible:ring-ring/40 focus-visible:ring-[3px]"
+                        >
+                          {dayNames.map((d, di) => (
+                            <option key={di} value={di}>{d}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor={`eslot_start_${i}`} className="text-xs">{t("groups.startTime")}</Label>
+                        <Input
+                          id={`eslot_start_${i}`}
+                          name={`slot_start_${i}`}
+                          type="time"
+                          value={slot.startTime}
+                          onChange={(e) => updateSlot(i, { startTime: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor={`eslot_end_${i}`} className="text-xs">{t("groups.endTime")}</Label>
+                        <Input
+                          id={`eslot_end_${i}`}
+                          name={`slot_end_${i}`}
+                          type="time"
+                          value={slot.endTime}
+                          onChange={(e) => updateSlot(i, { endTime: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end">
+                      <Button type="button" variant="ghost" size="sm" onClick={() => removeSlot(i)}>
+                        <X className="size-4" /> {t("common.delete")}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                <Button type="button" variant="outline" size="sm" onClick={addSlot}>
+                  <Plus className="size-3.5" /> {t("groups.add_slot")}
+                </Button>
+              </div>
+            )}
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
@@ -179,37 +301,21 @@ export function GroupEditDialog({ group, subjects, rooms }: { group: GroupData; 
               <LevelSelect name="level" defaultValue={group.level ?? ""} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="maxCapacity">{t("groups.capacity_label")}</Label>
+              <Label htmlFor="maxCapacity"><Users className="size-3.5 inline mr-1" />{t("groups.capacity_label")}</Label>
               <Input id="maxCapacity" name="maxCapacity" type="number" defaultValue={group.maxCapacity} min={1} />
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="pricePerSession">{t("groups.price_label")}</Label>
-              <Input
-                id="pricePerSession"
-                name="pricePerSession"
-                type="number"
-                step="0.01"
-                min="0"
-                defaultValue={group.pricePerSession ? String(group.pricePerSession) : ""}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="priceType">{t("groups.price_type_label")}</Label>
-              <input type="hidden" name="priceType" value={priceType} />
-              <Select value={priceType} onValueChange={setPriceType}>
-                <SelectTrigger className="w-full" id="priceType">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="per_session">{t("groups.per_session")}</SelectItem>
-                  <SelectItem value="monthly">{t("groups.monthly")}</SelectItem>
-                  <SelectItem value="package">{t("groups.package")}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="pricePerSession">{t("groups.price_label")}</Label>
+            <Input
+              id="pricePerSession"
+              name="pricePerSession"
+              type="number"
+              step="0.01"
+              min="0"
+              defaultValue={group.pricePerSession ? String(group.pricePerSession) : ""}
+            />
           </div>
 
           <div className="space-y-2">
@@ -222,6 +328,31 @@ export function GroupEditDialog({ group, subjects, rooms }: { group: GroupData; 
               defaultValue={group.sessionsIncluded ? String(group.sessionsIncluded) : ""}
             />
             <p className="text-xs text-muted-foreground">{t("groups.sessions_included_hint")}</p>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="editUseExpiresAt" checked={useExpiresAt} onChange={(e) => setUseExpiresAt(e.target.checked)} className="size-4 rounded border-input" />
+              <Label htmlFor="editUseExpiresAt">{t("groups.expires_label")}</Label>
+            </div>
+            <input type="hidden" name="useExpiresAt" value={useExpiresAt ? "1" : "0"} />
+            {useExpiresAt ? (
+              <>
+                <Input
+                  id="expiresAt"
+                  name="expiresAt"
+                  type="date"
+                  lang="fr"
+                  value={expiresAt}
+                  onChange={(e) => setExpiresAt(e.target.value)}
+                  required={useExpiresAt}
+                />
+                <input type="hidden" name="expiresAtField" value={expiresAt} />
+              </>
+            ) : (
+              <p className="text-xs text-muted-foreground">{t("groups.expires_hint")}</p>
+            )}
+            {!useExpiresAt && <input type="hidden" name="expiresAt" value="" />}
           </div>
 
           <input type="hidden" name="color" value={color} />

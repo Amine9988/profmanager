@@ -36,7 +36,10 @@ for (const dir of STALE_DEV) {
     console.log(`  removed stale ${dir}/ (from a previous dev server)`);
   }
 }
-run("node node_modules\\next\\dist\\bin\\next build", ROOT);
+const NEXT_BUILD_CMD = fs.existsSync(path.join(ROOT, "node_modules", "next", "dist", "bin", "next.js"))
+  ? "node node_modules\\next\\dist\\bin\\next.js build"
+  : "node node_modules\\next\\dist\\bin\\next build";
+run(NEXT_BUILD_CMD, ROOT);
 
 // Step 2: Remove project-root junctions from standalone .next/node_modules before copy
 const STANDALONE_DOT_NEXT_NM = path.join(STANDALONE_SRC, ".next", "node_modules");
@@ -100,9 +103,18 @@ srv = srv.replace(/const hostname = process\.env\.HOSTNAME \|\| '0\.0\.0\.0'/, `
 fs.writeFileSync(SERVER_JS, srv, "utf8");
 console.log("  hostname default set to 0.0.0.0 (LAN scanning enabled)");
 
+function writeAppUpdateYml() {
+  const src = path.join(ELECTRON, "build", "app-update.yml");
+  const dest = path.join(ELECTRON, "dist", "win-unpacked", "resources", "app-update.yml");
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.copyFileSync(src, dest);
+  console.log("  wrote " + dest);
+}
+
 // Step 4a: Build unpackaged app directory
 console.log("\n[4a/4] Building unpackaged app directory...");
 run("node node_modules\\electron-builder\\cli.js --dir", ELECTRON);
+writeAppUpdateYml();
 
 // Step 4b: Copy node_modules with junctions intact, then resolve all junctions for distribution
 console.log("\n[4b/4] Copying node_modules into unpackaged app...");
@@ -258,6 +270,7 @@ console.log("\n[4b5/4] Slimming production node_modules...");
 
 // Step 4c: Build NSIS installer from the modified unpackaged app
 console.log("\n[4c/4] Building NSIS installer from unpackaged app...");
+writeAppUpdateYml();
 run("node node_modules\\electron-builder\\cli.js --win --prepackaged=dist/win-unpacked", ELECTRON);
 
 console.log("\n=== Done ===");

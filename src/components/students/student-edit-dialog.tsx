@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState, useEffect, useState, useRef } from "react";
+import { useActionState, useEffect, useState, useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateStudent } from "@/server/actions/students";
+import { enrollStudent, unenrollStudent, updateEnrollmentClientType } from "@/server/actions/groups";
 import type { ActionResult } from "@/server/actions/students";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +19,8 @@ import {
 import { Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { LevelSelect } from "@/components/shared/level-select";
+import { ClientTypeField } from "@/components/students/client-type-field";
+import { StudentGroupsPicker, type GroupOption, type EnrollmentClientType } from "@/components/students/student-groups-picker";
 import { useT } from "@/lib/i18n";
 
 type StudentInfo = {
@@ -32,19 +35,57 @@ type StudentInfo = {
   notes: string | null;
   monthlyFee: number;
   subscriptionStart: Date | null;
+  clientType?: string | null;
 };
 
-export function StudentEditDialog({ student }: { student: StudentInfo }) {
+export function StudentEditDialog({
+  student,
+  enrolledGroups = [],
+  allGroups = [],
+}: {
+  student: StudentInfo;
+  enrolledGroups?: GroupOption[];
+  allGroups?: GroupOption[];
+}) {
   const t = useT();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [selectedGroups, setSelectedGroups] = useState<GroupOption[]>(enrolledGroups);
   const formRef = useRef<HTMLFormElement>(null);
   const [formKey, setFormKey] = useState(0);
   const boundAction = updateStudent.bind(null, student.id);
   const [state, formAction, pending] = useActionState<ActionResult, FormData>(boundAction, {});
+  const [groupsPending, startGroupsTransition] = useTransition();
 
   useEffect(() => {
     if (state?.success) {
+      const initialMap = new Map(enrolledGroups.map((g) => [g.id, g.clientType ?? "institution"]));
+      const currentIds = new Set(selectedGroups.map((g) => g.id));
+      const toAdd = selectedGroups.filter((g) => !initialMap.has(g.id));
+      const toRetype = selectedGroups.filter((g) => {
+        const prev = initialMap.get(g.id);
+        return prev !== undefined && prev !== (g.clientType ?? "institution");
+      });
+      const toRemove = enrolledGroups.filter((g) => !currentIds.has(g.id));
+
+      if (toAdd.length > 0 || toRemove.length > 0 || toRetype.length > 0) {
+        startGroupsTransition(async () => {
+          for (const g of toAdd) {
+            const res = await enrollStudent(g.id, student.id, g.clientType ?? "institution");
+            if (!res.success) toast.error(`${g.name}: ${res.error ?? t("common.error")}`);
+          }
+          for (const g of toRetype) {
+            const res = await updateEnrollmentClientType(g.id, student.id, g.clientType ?? "institution");
+            if (!res.success) toast.error(`${g.name}: ${res.error ?? t("common.error")}`);
+          }
+          for (const g of toRemove) {
+            const res = await unenrollStudent(g.id, student.id);
+            if (!res.success) toast.error(`${g.name}: ${res.error ?? t("common.error")}`);
+          }
+          router.refresh();
+        });
+      }
+
       toast.success(t("students.update_success"));
       requestAnimationFrame(() => {
         setOpen(false);
@@ -53,11 +94,13 @@ export function StudentEditDialog({ student }: { student: StudentInfo }) {
     } else if (state?.error) {
       toast.error(state.error);
     }
-  }, [state, router, t]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
 
   function handleOpenChange(v: boolean) {
     if (v) {
       setFormKey((k) => k + 1);
+      setSelectedGroups(enrolledGroups);
     }
     setOpen(v);
   }
@@ -82,6 +125,7 @@ export function StudentEditDialog({ student }: { student: StudentInfo }) {
             <Label htmlFor="gradeLevel">{t("common.level")}</Label>
             <LevelSelect name="gradeLevel" defaultValue={student.gradeLevel ?? ""} />
           </div>
+          <ClientTypeField defaultValue={student.clientType || "institution"} />
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="phone">{t("students.form.phone")}</Label>
@@ -92,9 +136,15 @@ export function StudentEditDialog({ student }: { student: StudentInfo }) {
               <Input id="fatherPhone" name="fatherPhone" defaultValue={student.fatherPhone ?? ""} />
             </div>
           </div>
+          {allGroups.length > 0 && (
+            <div className="space-y-2">
+              <Label>{t("students.groups_label")}</Label>
+              <StudentGroupsPicker groups={allGroups} value={selectedGroups} onChange={setSelectedGroups} defaultClientType={(student.clientType as EnrollmentClientType) || "institution"} />
+            </div>
+          )}
           <DialogFooter>
-            <Button type="submit" disabled={pending}>
-              {pending ? t("students.saving") : t("students.save_changes")}
+            <Button type="submit" disabled={pending || groupsPending}>
+              {pending || groupsPending ? t("students.saving") : t("students.save_changes")}
             </Button>
           </DialogFooter>
         </form>

@@ -1,15 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTenantContext } from "@/lib/auth";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const { tenantId, supabase } = await getTenantContext();
+    const { searchParams } = new URL(req.url);
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
+    const limit = Math.min(500, Math.max(1, parseInt(searchParams.get("limit") || "100", 10) || 100));
+    const offset = (page - 1) * limit;
+    const hasPagination = searchParams.get("page") !== null || searchParams.get("limit") !== null;
 
-    const { data: teachers } = await supabase
+    let q = supabase
       .from("teachers")
       .select("*")
       .eq("tenantId", tenantId)
       .order("createdAt", { ascending: false });
+    if (hasPagination) q = (q as any).range(offset, offset + limit - 1);
+    else q = (q as any).limit(200);
+    const { data: teachers } = await q;
 
     if (!teachers || teachers.length === 0) {
       return NextResponse.json([]);
@@ -52,7 +60,7 @@ export async function POST(req: NextRequest) {
   try {
     const { tenantId, supabase } = await getTenantContext();
     const body = await req.json();
-    const { firstName, lastName, fullName, phone, email, salaryType, salaryAmount, subjectIds } = body;
+    const { firstName, lastName, fullName, phone, email, salaryType, salaryAmount, salaryAmountTeacher, subjectIds } = body;
 
     const rawName = (fullName || [firstName, lastName].filter(Boolean).join(" ") || "").trim();
     if (!rawName) {
@@ -74,6 +82,7 @@ export async function POST(req: NextRequest) {
         email: email || null,
         salaryType: salaryType || "fixed",
         salaryAmount: salaryAmount || 0,
+        salaryAmountTeacher: salaryAmountTeacher || 0,
       })
       .select()
       .single();

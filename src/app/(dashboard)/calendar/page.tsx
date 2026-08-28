@@ -1,7 +1,6 @@
 import { getCalendarEvents } from "@/server/actions/calendar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { CalendarDays, BookOpen, CreditCard, AlertTriangle, X } from "@/components/ui/icons";
+import { CalendarDays, BookOpen } from "@/components/ui/icons";
 import Link from "next/link";
 import { getT, getInitialLocale } from "@/lib/i18n";
 
@@ -32,18 +31,8 @@ function formatEventDate(dateStr: string, locale: string): string {
   }).format(new Date(p.year, p.month - 1, p.day));
 }
 
-const typeColors: Record<string, "default" | "secondary" | "destructive" | "warning" | "success"> = {
-  session: "default",
-  subscription_expiry: "destructive",
-  payment_due: "warning",
-  absence: "secondary",
-};
-
 const typeIcons: Record<string, typeof BookOpen> = {
   session: BookOpen,
-  subscription_expiry: CreditCard,
-  payment_due: AlertTriangle,
-  absence: X,
 };
 
 export default async function CalendarPage({
@@ -52,9 +41,13 @@ export default async function CalendarPage({
   searchParams: Promise<{ month?: string; year?: string }>;
 }) {
   const params = await searchParams;
+  // Always anchor to the CURRENT month unless valid explicit params arrive.
+  // Invalid/garbage params (or stale cached ones) fall back to today.
   const now = new Date();
-  const month = parseInt(params.month ?? String(now.getMonth() + 1));
-  const year = parseInt(params.year ?? String(now.getFullYear()));
+  const qMonth = parseInt(String(params.month ?? ""), 10);
+  const qYear = parseInt(String(params.year ?? ""), 10);
+  const month = Number.isFinite(qMonth) && qMonth >= 1 && qMonth <= 12 ? qMonth : now.getMonth() + 1;
+  const year = Number.isFinite(qYear) && qYear >= 2000 && qYear <= 2100 ? qYear : now.getFullYear();
   const locale = await getInitialLocale();
   const t = await getT(locale);
   const events = await getCalendarEvents(month, year);
@@ -126,11 +119,17 @@ export default async function CalendarPage({
               <div className="space-y-0.5">
                 {dayEvents.slice(0, 3).map((e) => {
                   const Icon = typeIcons[e.type];
+                  const color = e.groupColor || undefined;
                   return (
                     <Link
                       key={e.id}
                       href={e.href}
                       className="flex items-center gap-1 rounded-sm px-1 py-0.5 text-[10px] hover:bg-accent"
+                      style={
+                        e.type === "session" && color
+                          ? { backgroundColor: `${color}1f`, borderInlineStart: `3px solid ${color}` }
+                          : undefined
+                      }
                       title={e.roomName ? `${e.title} · ${e.roomName}` : e.title}
                     >
                       <Icon className="size-3 shrink-0" />
@@ -147,12 +146,26 @@ export default async function CalendarPage({
         })}
       </div>
 
-      {/* LÃ©gende */}
-      <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-        <span className="flex items-center gap-1"><BookOpen className="size-4" /> {t("calendar.sessions")}</span>
-        <span className="flex items-center gap-1"><CreditCard className="size-4 text-destructive" /> {t("calendar.expiry")}</span>
-        <span className="flex items-center gap-1"><AlertTriangle className="size-4 text-warning" /> {t("calendar.payments_due")}</span>
-      </div>
+      {/* LÃ©gende — groupes uniquement */}
+      {(() => {
+        const groupColors = new Map<string, string>();
+        for (const e of events) {
+          if (e.groupName && e.groupColor) {
+            if (!groupColors.has(e.groupName)) groupColors.set(e.groupName, e.groupColor);
+          }
+        }
+        return (
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            <span className="flex items-center gap-1 text-muted-foreground"><BookOpen className="size-4" /> {t("calendar.sessions")}</span>
+            {Array.from(groupColors.entries()).map(([name, color]) => (
+              <span key={name} className="flex items-center gap-1.5">
+                <span className="inline-block size-3 rounded-full border" style={{ backgroundColor: `${color}55`, borderColor: color }} />
+                {name}
+              </span>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Liste des Ã©vÃ©nements du mois */}
       <Card>
@@ -165,27 +178,27 @@ export default async function CalendarPage({
           ) : (
             <div className="space-y-2">
               {events.map((e) => {
-                const BadgeIcon = typeIcons[e.type];
-                const label =
-                  e.type === "payment_due"
-                    ? t("calendar.payment_due_title", { name: e.studentName || "" })
-                    : e.title;
+                const color = e.groupColor || undefined;
                 return (
                   <Link
                     key={e.id}
                     href={e.href}
                     className="flex items-center gap-3 rounded-md border p-3 text-sm hover:bg-accent"
+                    style={color ? { borderInlineStart: `4px solid ${color}` } : undefined}
                   >
-                    <BadgeIcon className="size-4 shrink-0 text-muted-foreground" />
+                    {color ? (
+                      <span className="inline-block size-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                    ) : (
+                      <BookOpen className="size-4 shrink-0 text-muted-foreground" />
+                    )}
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{label}</p>
+                      <p className="font-medium truncate">{e.title}</p>
                       <p className="text-xs text-muted-foreground">
                         {formatEventDate(String(e.date), locale)}
                         {e.groupName ? ` · ${e.groupName}` : ""}
                         {e.roomName ? ` · ${e.roomName}` : ""}
                       </p>
                     </div>
-                    <Badge variant={typeColors[e.type]}>{t(`calendar.type_${e.type}`)}</Badge>
                   </Link>
                 );
               })}

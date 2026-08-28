@@ -133,7 +133,8 @@
     "payment_method": "Payment method",
     "deleting": "Deleting...",
     "selected": "Selected",
-    "select_all": "Select all"
+    "select_all": "Select all",
+    "none": "None"
   },
   "nav": {
     "overview": "Overview",
@@ -152,6 +153,7 @@
     "certificates": "Certificates",
     "teachers": "Teachers",
     "groups": "Groups",
+    "trash": "Trash",
     "settings": "Settings",
     "backup": "Backup",
     "language": "Language",
@@ -400,7 +402,14 @@
     "bulk_print": "Print cards",
     "remaining_sessions_label": "Remaining sessions",
     "consumed_sessions_label": "Sessions used",
-    "consumed_sessions_none": "No paid sessions"
+    "consumed_sessions_none": "No paid sessions",
+    "groups_label": "Groups",
+    "groups_add_placeholder": "Add a group…",
+    "groups_all_added": "All groups added",
+    "client_type_label": "Client type",
+    "client_institution": "Student — institution's client",
+    "client_teacher": "Student — teacher's client",
+    "client_type_hint": "Default type for newly added groups — adjust per group via the badge icon"
   },
   "groups": {
     "teacher": "Teacher",
@@ -496,7 +505,7 @@
     "students_label": "Students",
     "no_groups_desc": "Create your first group to start organizing your classes.",
     "recent_sessions": "Recent sessions",
-        "session_completed": "Completed",
+    "session_completed": "Completed",
     "session_cancelled": "Cancelled",
     "session_scheduled": "Scheduled",
     "updated_success": "Group updated successfully",
@@ -532,7 +541,12 @@
     "makeup_session_title": "Add makeup session",
     "add_makeup_session": "Add session",
     "regular_session": "Regular",
-    "no_rooms_hint": "No rooms available yet. Add a room first."
+    "no_rooms_hint": "No rooms available yet. Add a room first.",
+    "enroll_hint": "Optional — pick the group when creating the student",
+    "expires_label": "Group end date",
+    "expires_hint": "If not set, the group ends with the school year",
+    "expires_required": "Please choose a group end date",
+    "slot_times_required": "Fill in the day, start time and end time for each slot"
   },
   "attendance": {
     "title": "Attendance",
@@ -677,7 +691,11 @@
     "payment_date": "Payment date",
     "group": "Group",
     "overdue_aggregate": "Overdue this month: {count} student(s) — {amount}",
-    "save": "Save payment"
+    "save": "Save payment",
+    "discount_label": "Discount (%)",
+    "base_price": "Base price",
+    "discount_value": "Discount ({pct}%)",
+    "due_after_discount": "Due after discount"
   },
   "subscriptions": {
     "setup": "Set up subscription",
@@ -751,6 +769,8 @@
     "downloading": "Downloading",
     "downloadUpdate": "Download update",
     "installUpdate": "Install and restart",
+    "downloadInstaller": "Download installer",
+    "updateDesktopOnly": "Update checks are available in the installed desktop app.",
     "updateError": "Update error: {msg}",
     "overduePayments": "Overdue payments",
     "school_year_start": "School Year Start",
@@ -789,7 +809,26 @@
     "export_students": "Students register",
     "export_students_desc": "Students and their fees",
     "export_success": "Excel file downloaded.",
-    "export_error": "Failed to download the Excel file."
+    "export_error": "Failed to download the Excel file.",
+    "password_title": "Change Password",
+    "password_hint": "Password required for sensitive operations (deletion, cash register management).",
+    "password_current": "Current password",
+    "password_current_placeholder": "Enter current password",
+    "password_new": "New password",
+    "password_new_placeholder": "Enter new password",
+    "password_confirm": "Confirm password",
+    "password_confirm_placeholder": "Confirm new password",
+    "password_save": "Save password",
+    "password_changed": "Password changed successfully",
+    "password_wrong_current": "Current password is incorrect",
+    "password_no_match": "Passwords do not match",
+    "password_too_short": "Password must be at least 4 characters",
+    "password_fill_all": "Please fill in all fields",
+    "password_match": "Passwords match",
+    "password_forgot": "Forgot password? Reset to default",
+    "password_reset_confirm": "Reset password to profmanager1234?",
+    "password_reset_success": "Password reset to profmanager1234",
+    "password_enter_default": "Enter default password profmanager1234 to confirm:"
   },
   "validation": {
     "required": "The field {field} is required.",
@@ -853,7 +892,8 @@
     "backup_error": "Error creating backup",
     "restore_error": "Error restoring backup",
     "permission_denied": "Permission denied: {key}",
-    "room_conflict": "Room conflict"
+    "room_conflict": "Room conflict",
+    "session_overlap": "An identical session already exists for this group (same day and time) — change the time to add another session that day"
   },
   "packages": {
     "new_title": "New package",
@@ -945,7 +985,8 @@
       "teachers_desc": "Teachers and assignments",
       "groups_desc": "Groups and schedules",
       "certificates_desc": "Certificates and printing",
-      "settings_desc": "Application settings"
+      "settings_desc": "Application settings",
+      "trash_desc": "Deleted items and restoration"
     }
   },
   "notifications": {
@@ -1126,7 +1167,13 @@
     "no_dues_sessions": "No finished sessions in this period",
     "pay_remaining": "Pay dues ({amount})",
     "monthly_note": "Monthly salary: {months} months × set amount",
-    "dues_hint": "Remaining amount: {amount}"
+    "dues_hint": "Remaining amount: {amount}",
+    "rate_institution_label": "Student percentage — institution's client (%)",
+    "rate_teacher_label": "Student percentage — teacher's client (%)",
+    "rate_hint": "The percentage applies to the group's price for each attended session — every extra session increases dues",
+    "rate_institution_short": "Institution's client",
+    "rate_teacher_short": "Teacher's client",
+    "overpaid_hint": "Overpaid: payments exceed dues by {amount}"
   },
   "levels": {
     "title": "Levels",
@@ -1182,8 +1229,15 @@
     "delete_confirm": "Are you sure you want to delete this movement? This action cannot be undone.",
     "auto_generated_hint": "This transaction was generated automatically. Use the Payments module to edit it.",
     "category_payment": "Payment",
+    "category_inscription": "Enrollment",
+    "category_sale": "Sale",
+    "category_other_income": "Other income",
     "category_salary": "Salary",
+    "category_rent": "Rent",
+    "category_electricity": "Electricity",
     "category_supplies": "Supplies",
+    "category_maintenance": "Maintenance",
+    "category_other_expense": "Other expense",
     "category_general": "General",
     "description_payment": "Payment",
     "description_additional": "Additional payment",
@@ -1259,5 +1313,27 @@
     "description": "The all-in-one platform for private tutors: students, groups, attendance, payments, packages, and PDF receipts.",
     "og_description": "The all-in-one platform for private tutors: students, groups, attendance, payments.",
     "manifest_description": "Private tutoring management — students, groups, attendance, payments"
+  },
+  "trash": {
+    "title": "Trash",
+    "empty": "Trash is empty",
+    "empty_hint": "Deleted items will appear here",
+    "empty_trash": "Empty Trash",
+    "empty_trash_title": "Empty Trash",
+    "empty_trash_confirm": "Permanently delete all items in trash? This action cannot be undone.",
+    "empty_success": "Trash emptied successfully",
+    "restore": "Restore",
+    "restore_success": "Item restored successfully",
+    "delete_permanently_title": "Delete Permanently",
+    "delete_permanently_confirm": "This item will be permanently deleted. This action cannot be undone.",
+    "delete_permanently_success": "Item permanently deleted",
+    "deleted_at": "Deleted on",
+    "payment": "Payment",
+    "movement": "Cash movement",
+    "continue": "Continue",
+    "enter_password": "Confirm with password",
+    "password_placeholder": "Enter your password",
+    "wrong_password": "Incorrect password",
+    "confirm": "Confirm"
   }
 }

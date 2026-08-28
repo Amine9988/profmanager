@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useT, useI18n } from "@/lib/i18n";
 import { formatCurrency } from "@/lib/utils";
 import { jsPDF } from "jspdf";
@@ -124,6 +124,7 @@ interface Payment {
   month: string;
   amountDue: number;
   amountPaid: number;
+  discountPercent?: number | null;
   status: string;
   paidAt: string | null;
   note: string | null;
@@ -176,6 +177,7 @@ function PaymentRecordDialog({ onRecorded, defaultMonth }: { onRecorded: (month?
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [discount, setDiscount] = useState("0");
   const [existingPayment, setExistingPayment] = useState<{ amountDue: number; amountPaid: number } | null>(null);
 
   useEffect(() => {
@@ -193,6 +195,7 @@ function PaymentRecordDialog({ onRecorded, defaultMonth }: { onRecorded: (month?
         setStudentId("");
         setAmount("");
         setNote("");
+        setDiscount("0");
         setMonth(defaultMonth || new Date().toISOString().slice(0, 7));
         setExistingPayment(null);
       });
@@ -216,9 +219,20 @@ function PaymentRecordDialog({ onRecorded, defaultMonth }: { onRecorded: (month?
   const availableStudents = selectedGroup?.students || [];
   const selectedStudent = students.find((s) => s.id === studentId);
   const studentName = selectedStudent?.fullName || "";
-  const amountDue = existingPayment?.amountDue ?? selectedGroup?.pricePerSession ?? 0;
+  const discountPct = Math.min(100, Math.max(0, Number(discount) || 0));
+  const basePrice = selectedGroup?.pricePerSession ?? existingPayment?.amountDue ?? 0;
+  const discountedDue = basePrice > 0 && !existingPayment ? Math.round(basePrice * (1 - discountPct / 100)) : null;
+  const amountDue = discountedDue ?? existingPayment?.amountDue ?? selectedGroup?.pricePerSession ?? 0;
   const alreadyPaid = existingPayment?.amountPaid ?? 0;
   const remaining = Math.max(amountDue - alreadyPaid, 0);
+
+  function applyDiscountAndFill(pctStr: string, gid = groupId) {
+    setDiscount(pctStr);
+    const pct = Math.min(100, Math.max(0, Number(pctStr) || 0));
+    if (existingPayment) return; // never rewrite an already-recorded month
+    const g = groups.find((x) => x.id === gid);
+    if (g?.pricePerSession) setAmount(String(Math.round(g.pricePerSession * (1 - pct / 100))));
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -229,7 +243,7 @@ function PaymentRecordDialog({ onRecorded, defaultMonth }: { onRecorded: (month?
       const res = await fetch("/api/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ studentId, groupId, month, amount: amt, note: note || undefined, paymentDate }),
+        body: JSON.stringify({ studentId, groupId, month, amount: amt, note: note || undefined, paymentDate, discountPercent: discountPct }),
       });
       if (res.ok) {
         toast.success(t("payments.paymentRecorded"));
@@ -268,7 +282,7 @@ function PaymentRecordDialog({ onRecorded, defaultMonth }: { onRecorded: (month?
                 setGroupId(gid);
                 setStudentId("");
                 const g = groups.find((x) => x.id === gid);
-                if (g?.pricePerSession) setAmount(String(g.pricePerSession));
+                if (g?.pricePerSession) setAmount(String(Math.round(g.pricePerSession * (1 - discountPct / 100))));
                 else setAmount("");
               }}
               required
@@ -320,10 +334,37 @@ function PaymentRecordDialog({ onRecorded, defaultMonth }: { onRecorded: (month?
             </div>
           </div>
 
+          {groupId && studentId && basePrice > 0 && !existingPayment && (
+            <div className="space-y-2">
+              <Label htmlFor="pdiscount">{t("payments.discount_label")}</Label>
+              <Input
+                id="pdiscount"
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                value={discount}
+                onChange={(e) => applyDiscountAndFill(e.target.value)}
+              />
+            </div>
+          )}
+
           {groupId && studentId && month && (
             <div className="rounded-lg border bg-muted/30 p-4 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">{t("payments.amount_due")}</span>
+              {basePrice > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">{t("payments.base_price")}</span>
+                  <span>{formatCurrency(basePrice)}</span>
+                </div>
+              )}
+              {discountPct > 0 && discountedDue !== null && (
+                <div className="flex justify-between text-sm text-green-600">
+                  <span>{t("payments.discount_value", { pct: discountPct })}</span>
+                  <span>−{formatCurrency(basePrice - discountedDue)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-sm border-t pt-2">
+                <span className="text-muted-foreground">{t("payments.due_after_discount")}</span>
                 <span className="font-semibold">{formatCurrency(amountDue)}</span>
               </div>
               <div className="flex justify-between text-sm">
@@ -390,35 +431,49 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
   const [showPinDialog, setShowPinDialog] = useState(false);
   const [pinValue, setPinValue] = useState("");
   const [pinError, setPinError] = useState(false);
+  const PAGE_SIZE = 50;
+  const [page, setPage] = useState(1);
 
-  const ADMIN_PIN = "profmanager1234";
-
-  const handleReveal = (e: React.FormEvent) => {
+  const handleReveal = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pinValue === ADMIN_PIN) {
-      setRevealed(true);
-      setPinValue("");
-      setPinError(false);
-      setShowPinDialog(false);
-    } else {
+    try {
+      const res = await fetch("/api/auth/verify-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: pinValue }),
+      });
+      if (res.ok) {
+        setRevealed(true);
+        setPinValue("");
+        setPinError(false);
+        setShowPinDialog(false);
+      } else {
+        setPinError(true);
+      }
+    } catch {
       setPinError(true);
     }
   };
 
-  const filteredPayments = (statusFilter === "all"
-    ? payments
-    : payments.filter((p) => p.status === statusFilter)
-  ).filter((p) => {
-    if (!search.trim()) return true;
-    const q = search.trim().toLowerCase();
-    const groups = (p.student?.groupStudents ?? [])
-      .map((gs) => gs.groups?.name || gs.group?.name || "")
-      .join(" ");
-    const month = new Date(p.month).toLocaleDateString(undefined, { year: "numeric", month: "long" });
-    return [p.student?.fullName, groups, month, p.receiptNumber]
-      .filter(Boolean)
-      .some((v) => v!.toLowerCase().includes(q));
-  });
+  const filteredPayments = useMemo(() => {
+    const base = statusFilter === "all" ? payments : payments.filter((p) => p.status === statusFilter);
+    return base.filter((p) => {
+      if (!search.trim()) return true;
+      const q = search.trim().toLowerCase();
+      const groups = (p.student?.groupStudents ?? [])
+        .map((gs) => gs.groups?.name || gs.group?.name || "")
+        .join(" ");
+      const month = new Date(p.month).toLocaleDateString(undefined, { year: "numeric", month: "long" });
+      return [p.student?.fullName, groups, month, p.receiptNumber]
+        .filter(Boolean)
+        .some((v) => v!.toLowerCase().includes(q));
+    });
+  }, [payments, statusFilter, search]);
+
+  useEffect(() => { setPage(1); }, [search, statusFilter, viewMonth, allTime]);
+  const totalPages = Math.max(1, Math.ceil(filteredPayments.length / PAGE_SIZE));
+  const paginatedPayments = useMemo(() => filteredPayments.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [filteredPayments, page]);
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [totalPages, page]);
 
   const monthOverdue = payments.filter((p) => p.status === "overdue" || p.status === "partial");
   const monthOverdueTotal = monthOverdue.reduce((acc, p) => acc + Math.max(p.amountDue - p.amountPaid, 0), 0);
@@ -501,7 +556,13 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
   function buildInvoiceHtml(p: Payment, i: number): string {
     const statusLabel = p.status === "paid" ? "مدفوع" : p.status === "partial" ? "جزئي" : p.status === "overdue" ? "متأخر" : "معلق";
     const monthLabel = new Date(p.month).toLocaleDateString("ar-DZ", { year: "numeric", month: "long" });
-    const dateLabel = new Date().toLocaleDateString("ar-DZ");
+    const d = p.paidAt ? new Date(p.paidAt) : null;
+    const isMidnight = d ? d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0 : true;
+    const dateObj = d && !isMidnight ? d : new Date();
+    const dateLabel = dateObj.toLocaleString("ar-DZ", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+    const pct = Number(p.discountPercent) || 0;
+    const baseDue = pct > 0 ? Math.round(p.amountDue / (1 - pct / 100)) : p.amountDue;
+    const discountAmount = baseDue - p.amountDue;
     const remaining = Math.max(p.amountDue - p.amountPaid, 0);
     const groupLabel = (() => {
       const matched = (p.student?.groupStudents ?? []).find(
@@ -527,7 +588,9 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
         <table style="width:100%;font-size:13px;border-collapse:collapse;">
           <thead><tr style="background:#f1f5f9;"><th style="padding:6px 8px;text-align:right;">البيان</th><th style="padding:6px 8px;text-align:left;">المبلغ</th></tr></thead>
           <tbody>
-            <tr><td style="padding:5px 8px;">المبلغ المستحق</td><td style="padding:5px 8px;text-align:left;">${formatCurrency(p.amountDue)}</td></tr>
+            ${pct > 0 ? `<tr><td style="padding:5px 8px;">السعر الأساسي</td><td style="padding:5px 8px;text-align:left;">${formatCurrency(baseDue)}</td></tr>
+            <tr style="background:#f8fafc;"><td style="padding:5px 8px;color:#16a34a;">التخفيض (${pct}%)</td><td style="padding:5px 8px;text-align:left;color:#16a34a;">−${formatCurrency(discountAmount)}</td></tr>
+            <tr><td style="padding:5px 8px;font-weight:600;">المستحق بعد التخفيض</td><td style="padding:5px 8px;text-align:left;font-weight:600;">${formatCurrency(p.amountDue)}</td></tr>` : `<tr><td style="padding:5px 8px;">المبلغ المستحق</td><td style="padding:5px 8px;text-align:left;">${formatCurrency(p.amountDue)}</td></tr>`}
             <tr style="background:#f8fafc;"><td style="padding:5px 8px;">المبلغ المدفوع</td><td style="padding:5px 8px;text-align:left;">${formatCurrency(p.amountPaid)}</td></tr>
             <tr><td style="padding:5px 8px;font-weight:600;">المبلغ المتبقي</td><td style="padding:5px 8px;text-align:left;font-weight:600;">${formatCurrency(remaining)}</td></tr>
           </tbody>
@@ -795,31 +858,43 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
       </div>
 
       {/* PIN Dialog */}
-      {showPinDialog && (
-        <Dialog open onOpenChange={setShowPinDialog}>
-          <DialogContent className="max-w-sm">
-            <DialogHeader>
-              <DialogTitle>{t("caisse.pin_required")}</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleReveal} className="space-y-4">
-              <Input
-                type="password"
-                value={pinValue}
-                onChange={(e) => { setPinValue(e.target.value); setPinError(false); }}
-                autoFocus
-                autoComplete="off"
-              />
-              {pinError && <p className="text-sm text-destructive">{t("caisse.wrong_password")}</p>}
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => { setShowPinDialog(false); setPinValue(""); setPinError(false); }}>
-                  {t("common.cancel")}
-                </Button>
-                <Button type="submit"><Eye className="size-4 mr-1" /> {t("caisse.reveal")}</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-      )}
+      <Dialog open={showPinDialog} onOpenChange={setShowPinDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t("caisse.pin_required")}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleReveal} className="space-y-4">
+            <Input
+              type="password"
+              value={pinValue}
+              onChange={(e) => { setPinValue(e.target.value); setPinError(false); }}
+              autoFocus
+              autoComplete="off"
+            />
+            {pinError && <p className="text-sm text-destructive">{t("caisse.wrong_password")}</p>}
+            <button
+              type="button"
+              className="text-xs text-primary underline"
+              onClick={async () => {
+                const input = prompt(t("settings.password_enter_default") || "أدخل كلمة المرور الافتراضية profmanager1234 للتأكيد:");
+                if (input === null) return;
+                if (input !== "profmanager1234") { toast.error(t("caisse.wrong_password")); return; }
+                if (!confirm(t("settings.password_reset_confirm"))) return;
+                const r = await fetch("/api/auth/reset-password", { method: "POST" });
+                if (r.ok) { toast.success(t("settings.password_reset_success")); setPinValue(""); setPinError(false); } else toast.error(t("common.error"));
+              }}
+            >
+              {t("settings.password_forgot")}
+            </button>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => { setShowPinDialog(false); setPinValue(""); setPinError(false); }}>
+                {t("common.cancel")}
+              </Button>
+              <Button type="submit"><Eye className="size-4 mr-1" /> {t("caisse.reveal")}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {monthOverdue.length > 0 && (
         <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3 flex items-center justify-between gap-2">
@@ -921,7 +996,7 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
               </tr>
             </thead>
             <tbody>
-              {filteredPayments.map((p, i) => {
+              {paginatedPayments.map((p, i) => {
                 const remaining = Math.max(p.amountDue - p.amountPaid, 0);
                 return (
                     <tr key={p.id} className={`border-b ${i % 2 === 0 ? "bg-background" : "bg-muted/20"}`}>
@@ -997,6 +1072,17 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
         </div>
       )}
 
+      {filteredPayments.length > PAGE_SIZE && (
+        <div className="flex items-center justify-between py-3 text-sm">
+          <span className="text-muted-foreground">{page} / {totalPages} — {filteredPayments.length} {t("common.total")}</span>
+          <div className="flex gap-1">
+            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>{t("common.previous")}</Button>
+            <span className="px-2 text-xs flex items-center">{page} / {totalPages}</span>
+            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}>{t("common.next")}</Button>
+          </div>
+        </div>
+      )}
+
       {editingPayment && (
         <EditPaymentModal
           payment={editingPayment}
@@ -1069,3 +1155,4 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
     </div>
   );
 }
+

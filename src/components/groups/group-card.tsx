@@ -29,6 +29,7 @@ type GroupCardProps = {
     roomId: string | null;
     sessionsIncluded: string | number | null;
     color?: string | null;
+    expiresAt?: string | null;
   };
   subjects: Subject[];
   rooms?: { id: string; name: string; code: string }[];
@@ -87,6 +88,8 @@ export function GroupCard({ group, subjects, rooms }: GroupCardProps) {
                   teacherId: group.teacher?.id ?? null,
                   roomId: group.roomId ?? null,
                   color: group.color ?? null,
+                  expiresAt: (group as any).expiresAt ?? null,
+                  scheduleSlots: (group.scheduleSlots ?? []) as { id?: string; dayOfWeek: number; startTime: string; endTime: string }[],
                 }}
                 subjects={subjects}
                 rooms={rooms}

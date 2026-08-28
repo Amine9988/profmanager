@@ -41,6 +41,7 @@ function SelectContent({
   className,
   children,
   position = "popper",
+  onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content>) {
   return (
@@ -55,6 +56,10 @@ function SelectContent({
         )}
         position={position}
         {...props}
+        onCloseAutoFocus={(e) => {
+          e.preventDefault();
+          onCloseAutoFocus?.(e);
+        }}
       >
         <SelectPrimitive.Viewport
           className={cn(

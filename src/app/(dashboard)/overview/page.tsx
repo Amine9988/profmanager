@@ -13,10 +13,12 @@ import {
   UsersRound,
   ScrollText,
   Settings,
+  Trash2,
   ChevronRight,
   type LucideIcon,
 } from "lucide-react";
 import { getT, getInitialLocale } from "@/lib/i18n";
+import { UpdateCard } from "@/components/shared/update-card";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +42,7 @@ const MODULES: Module[] = [
   { href: "/teachers", navKey: "teachers", descKey: "teachers_desc", icon: GraduationCap },
   { href: "/groups", navKey: "groups", descKey: "groups_desc", icon: UsersRound },
   { href: "/certificates", navKey: "certificates", descKey: "certificates_desc", icon: ScrollText },
+  { href: "/trash", navKey: "trash", descKey: "trash_desc", icon: Trash2 },
   { href: "/settings", navKey: "settings", descKey: "settings_desc", icon: Settings },
 ];
 
@@ -74,6 +77,8 @@ export default async function OverviewPage() {
           </Link>
         ))}
       </div>
+
+      <UpdateCard />
     </div>
   );
 }

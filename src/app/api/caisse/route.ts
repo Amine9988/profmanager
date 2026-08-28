@@ -10,13 +10,19 @@ export async function GET(req: NextRequest) {
     const dateFrom = searchParams.get("from");
     const dateTo = searchParams.get("to");
 
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
+    const limit = Math.min(500, Math.max(1, parseInt(searchParams.get("limit") || "100", 10) || 100));
+    const offset = (page - 1) * limit;
+    const hasPagination = searchParams.get("page") !== null || searchParams.get("limit") !== null;
+
     let query = supabase
       .from("cash_movements")
       .select("*")
       .eq("tenantId", tenantId)
       .order("date", { ascending: false })
-      .order("createdAt", { ascending: false })
-      .limit(500);
+      .order("createdAt", { ascending: false });
+    if (hasPagination) query = (query as any).range(offset, offset + limit - 1);
+    else query = query.limit(500);
 
     if (type) query = query.eq("type", type);
     if (category) query = query.eq("category", category);
@@ -37,21 +43,10 @@ export async function GET(req: NextRequest) {
       .filter((m: any) => m.type === "expense")
       .reduce((sum: number, m: any) => sum + Number(m.amount), 0);
 
-    const now = new Date();
-    const firstOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-    const lastOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()}`;
-
-    const { data: monthMovements } = await supabase
-      .from("cash_movements")
-      .select("type, amount")
-      .eq("tenantId", tenantId)
-      .gte("date", firstOfMonth)
-      .lte("date", lastOfMonth);
-
-    const monthIncome = (monthMovements || [])
+    const monthIncome = (movements || [])
       .filter((m: any) => m.type === "income")
       .reduce((sum: number, m: any) => sum + Number(m.amount), 0);
-    const monthExpense = (monthMovements || [])
+    const monthExpense = (movements || [])
       .filter((m: any) => m.type === "expense")
       .reduce((sum: number, m: any) => sum + Number(m.amount), 0);
 

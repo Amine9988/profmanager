@@ -21,13 +21,32 @@ export async function GET(req: NextRequest) {
     }
 
     const firstOfMonth = `${year}-${String(month).padStart(2, "0")}-01`;
+    const pageParam = searchParams.get("page");
+    const limitParam = searchParams.get("limit");
+    const search = searchParams.get("search") || "";
+    const hasPagination = pageParam !== null || limitParam !== null;
+    const page = Math.max(1, parseInt(pageParam || "1", 10) || 1);
+    // Default: monthly view 200, allTime 100, explicit limit capped at 500
+    const defaultLimit = allTime ? 100 : 200;
+    const limit = Math.min(500, Math.max(1, parseInt(limitParam || String(defaultLimit), 10) || defaultLimit));
+    const offset = (page - 1) * limit;
 
     let query = supabase
       .from("payments")
       .select("*, students(id, fullName, monthlyFee, group_students(*, groups(name)))")
-      .eq("tenantId", tenantId);
+      .eq("tenantId", tenantId)
+      .order("month", { ascending: false })
+      .order("createdAt", { ascending: false });
 
     if (!allTime) query = query.eq("month", firstOfMonth);
+
+    // Apply server pagination to avoid 10k payload blowup
+    if (hasPagination || allTime) {
+      query = (query as any).range(offset, offset + limit - 1);
+    } else if (!hasPagination && !allTime) {
+      // Monthly view without explicit pagination — cap at 500
+      query = (query as any).limit(500);
+    }
 
     const { data: payments } = await query;
 
@@ -69,7 +88,8 @@ export async function POST(req: NextRequest) {
   try {
     const { tenantId, supabase, userId } = await getTenantContext();
     const body = await req.json();
-    const { studentId, month, amount, note, paymentDate, groupId } = body;
+    const { studentId, month, amount, note, paymentDate, groupId, discountPercent } = body;
+    const pct = Math.min(100, Math.max(0, Number(discountPercent) || 0));
 
     if (!studentId || !month || !amount) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -78,7 +98,9 @@ export async function POST(req: NextRequest) {
     const paymentDateStr = paymentDate && /^\d{4}-\d{2}-\d{2}$/.test(paymentDate)
       ? paymentDate
       : new Date().toISOString().split("T")[0];
-    const paymentDateTime = new Date(`${paymentDateStr}T00:00:00`);
+    const now = new Date();
+    const timePart = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
+    const paymentDateTime = new Date(`${paymentDateStr}T${timePart}`);
     const paymentDateForMonth = `${month.slice(0, 7)}-01`;
 
     let amountDue = Number(amount);
@@ -92,6 +114,9 @@ export async function POST(req: NextRequest) {
         .maybeSingle();
       if (group?.pricePerSession) amountDue = Number(group.pricePerSession);
       sessionsIncluded = group?.sessionsIncluded ? Number(group.sessionsIncluded) : null;
+
+      // Percentage discount applies to THIS payment's due only.
+      if (pct > 0) amountDue = Math.round(amountDue * (1 - pct / 100));
     } else {
       const { data: student } = await supabase
         .from("students")
@@ -117,6 +142,7 @@ export async function POST(req: NextRequest) {
       month: paymentDateForMonth,
       amountDue: amountDue,
       amountPaid: Number(amount),
+      discountPercent: pct,
       status,
       paidAt: paidAt,
       updatedAt: new Date().toISOString(),

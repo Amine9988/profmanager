@@ -133,7 +133,8 @@
     "payment_method": "طريقة الدفع",
     "deleting": "جاري الحذف...",
     "selected": "محدد",
-    "select_all": "تحديد الكل"
+    "select_all": "تحديد الكل",
+    "none": "بدون"
   },
   "nav": {
     "overview": "نظرة عامة",
@@ -152,6 +153,7 @@
     "certificates": "الشهادات",
     "teachers": "الأساتذة",
     "groups": "المجموعات",
+    "trash": "المحذوفات",
     "settings": "الإعدادات",
     "backup": "النسخ الاحتياطي",
     "language": "اللغة",
@@ -400,7 +402,14 @@
     "bulk_print": "طباعة البطاقات",
     "remaining_sessions_label": "الحصص المتبقية",
     "consumed_sessions_label": "الحصص المستهلكة",
-    "consumed_sessions_none": "لا توجد حصص مدفوعة"
+    "consumed_sessions_none": "لا توجد حصص مدفوعة",
+    "client_type_hint": "النوع الافتراضي للمجموعات الجديدة — يمكنك تعديل نوع كل مجموعة من الأيقونة على شارتها",
+    "groups_label": "المجموعات",
+    "groups_add_placeholder": "أضف مجموعة…",
+    "groups_all_added": "تمت إضافة جميع المجموعات",
+    "client_type_label": "نوع الزبون",
+    "client_institution": "تلميذ زبون المؤسسة",
+    "client_teacher": "تلميذ زبون الأستاذ"
   },
   "groups": {
     "teacher": "الأستاذ",
@@ -492,10 +501,11 @@
     "active": "نشط",
     "archived": "مؤرشف",
     "students_count": "{count}/{max} طالب",
-    "slots_count": "{count} موعد(ة) أسبوعي(ة)",    "students_label": "الطلاب",
+    "slots_count": "{count} موعد(ة) أسبوعي(ة)",
+    "students_label": "الطلاب",
     "no_groups_desc": "أنشئ أول مجموعة للبدء في تنظيم دروسك.",
     "recent_sessions": "آخر الحصص",
-        "session_completed": "منتهية",
+    "session_completed": "منتهية",
     "session_cancelled": "ملغية",
     "session_scheduled": "مجدولة",
     "updated_success": "تم تعديل المجموعة بنجاح",
@@ -531,7 +541,12 @@
     "makeup_session_created": "تم إنشاء الحصة التعويضية",
     "makeup_session_title": "إضافة حصة تعويضية",
     "add_makeup_session": "إضافة الحصة",
-    "regular_session": "عادية"
+    "regular_session": "عادية",
+    "enroll_hint": "اختياري — اختر المجموعة عند إنشاء التلميذ",
+    "expires_label": "تاريخ انتهاء المجموعة",
+    "expires_hint": "إذا لم تحدد تاريخا، تنتهي المجموعة مع نهاية السنة الدراسية",
+    "expires_required": "حدد تاريخ انتهاء المجموعة",
+    "slot_times_required": "أكمل يوم ووقت بداية ونهاية كل موعد"
   },
   "attendance": {
     "title": "الحضور",
@@ -676,7 +691,11 @@
     "payment_date": "تاريخ الدفع",
     "group": "المجموعة",
     "overdue_aggregate": "متأخرو هذا الشهر: {count} طالب — {amount}",
-    "save": "حفظ الدفعة"
+    "save": "حفظ الدفعة",
+    "discount_label": "تخفيض (%)",
+    "base_price": "السعر الأساسي",
+    "discount_value": "التخفيض ({pct}%)",
+    "due_after_discount": "المستحق بعد التخفيض"
   },
   "subscriptions": {
     "setup": "إعداد الاشتراك",
@@ -750,6 +769,8 @@
     "downloading": "جارٍ التحميل",
     "downloadUpdate": "تحميل التحديث",
     "installUpdate": "تثبيت وإعادة التشغيل",
+    "downloadInstaller": "تحميل المثبت",
+    "updateDesktopOnly": "التحقق من التحديثات متاح داخل التطبيق المثبت.",
     "updateError": "خطأ في التحديث: {msg}",
     "overduePayments": "المدفوعات المتأخرة",
     "school_year_start": "بداية السنة الدراسية",
@@ -788,7 +809,26 @@
     "export_students": "سجل التلاميذ",
     "export_students_desc": "التلاميذ ورسومهم",
     "export_success": "تم تحميل ملف Excel بنجاح.",
-    "export_error": "فشل تحميل ملف Excel."
+    "export_error": "فشل تحميل ملف Excel.",
+    "password_title": "تغيير كلمة المرور",
+    "password_hint": "كلمة المرور المطلوبة للعمليات الحساسة (الحذف، إدارة الصندوق).",
+    "password_current": "كلمة المرور الحالية",
+    "password_current_placeholder": "أدخل كلمة المرور الحالية",
+    "password_new": "كلمة المرور الجديدة",
+    "password_new_placeholder": "أدخل كلمة المرور الجديدة",
+    "password_confirm": "تأكيد كلمة المرور",
+    "password_confirm_placeholder": "أكد كلمة المرور الجديدة",
+    "password_save": "حفظ كلمة المرور",
+    "password_changed": "تم تغيير كلمة المرور بنجاح",
+    "password_wrong_current": "كلمة المرور الحالية غير صحيحة",
+    "password_no_match": "كلمتا المرور غير متطابقتين",
+    "password_too_short": "يجب أن تحتوي كلمة المرور على 4 أحرف على الأقل",
+    "password_fill_all": "يرجى ملء جميع الحقول",
+    "password_match": "كلمتا المرور متطابقتان",
+    "password_forgot": "نسيت كلمة المرور؟ إعادة إلى الافتراضية",
+    "password_reset_confirm": "هل أنت متأكد من إعادة كلمة المرور إلى الافتراضية profmanager1234؟",
+    "password_reset_success": "تمت إعادة كلمة المرور إلى profmanager1234",
+    "password_enter_default": "أدخل كلمة المرور الافتراضية profmanager1234 للتأكيد:"
   },
   "validation": {
     "required": "حقل {field} مطلوب.",
@@ -852,7 +892,8 @@
     "backup_error": "خطأ في إنشاء النسخة الاحتياطية",
     "restore_error": "خطأ في استعادة النسخة الاحتياطية",
     "permission_denied": "تم رفض الإذن: {key}",
-    "room_conflict": "تعارض في القاعة"
+    "room_conflict": "تعارض في القاعة",
+    "session_overlap": "توجد حصة مطابقة لهذه المجموعة بنفس اليوم ونفس التوقيت — عدّل التوقيت لإضافة حصة أخرى في نفس اليوم"
   },
   "packages": {
     "new_title": "باقة جديدة",
@@ -944,7 +985,8 @@
       "teachers_desc": "الأساتذة وتوزيعهم",
       "groups_desc": "المجموعات وجداول الأوقات",
       "certificates_desc": "الشهادات والطباعة",
-      "settings_desc": "إعدادات التطبيق"
+      "settings_desc": "إعدادات التطبيق",
+      "trash_desc": "المحذوفات والاسترجاع"
     }
   },
   "notifications": {
@@ -1125,7 +1167,13 @@
     "no_dues_sessions": "لا توجد حصص منتهية في هذه الفترة",
     "pay_remaining": "دفع المستحقات ({amount})",
     "monthly_note": "الراتب الشهري: {months} شهر × المبلغ المحدد",
-    "dues_hint": "المبلغ المتبقي: {amount}"
+    "dues_hint": "المبلغ المتبقي: {amount}",
+    "rate_institution_label": "نسبة تلميذ زبون المؤسسة (%)",
+    "rate_teacher_label": "نسبة تلميذ زبون الأستاذ (%)",
+    "rate_hint": "تُحسب نسبة الأستاذ من سعر المجموعة عن كل حصة يحضر فيها تلاميذها — كل حصة إضافية تزيد المستحق",
+    "rate_institution_short": "زبون المؤسسة",
+    "rate_teacher_short": "زبون الأستاذ",
+    "overpaid_hint": "دفع زائد: تجاوز المدفوع المستحق بمقدار {amount}"
   },
   "levels": {
     "title": "المستويات",
@@ -1181,8 +1229,15 @@
     "delete_confirm": "هل أنت متأكد من حذف هذه الحركة؟ هذا الإجراء لا يمكن التراجع عنه.",
     "auto_generated_hint": "تم إنشاء هذه المعاملة تلقائياً. استخدم وحدة الدفعات لتعديلها.",
     "category_payment": "دفعة",
+    "category_inscription": "تسجيل",
+    "category_sale": "مبيعات",
+    "category_other_income": "إيراد آخر",
     "category_salary": "راتب",
+    "category_rent": "إيجار",
+    "category_electricity": "كهرباء",
     "category_supplies": "لوازم",
+    "category_maintenance": "صيانة",
+    "category_other_expense": "مصروف آخر",
     "category_general": "عام",
     "description_payment": "دفع",
     "description_additional": "دفع إضافي",
@@ -1258,5 +1313,27 @@
     "description": "المنصة الشاملة للأساتذة الخصوصيين: التلاميذ، المجموعات، الحضور، المدفوعات، الباقات وإيصالات PDF.",
     "og_description": "المنصة الشاملة للأساتذة الخصوصيين: التلاميذ، المجموعات، الحضور، المدفوعات.",
     "manifest_description": "إدارة الدروس الخصوصية — التلاميذ، المجموعات، الحضور، المدفوعات"
+  },
+  "trash": {
+    "title": "المحذوفات",
+    "empty": "المحذوفات فارغة",
+    "empty_hint": "العناصر المحذوفة ستظهر هنا",
+    "empty_trash": "تفريغ المحذوفات",
+    "empty_trash_title": "تفريغ المحذوفات",
+    "empty_trash_confirm": "هل تريد حذف جميع العناصر نهائياً؟ هذا الإجراء لا يمكن التراجع عنه.",
+    "empty_success": "تم تفريغ المحذوفات بنجاح",
+    "restore": "استعادة",
+    "restore_success": "تمت استعادة العنصر بنجاح",
+    "delete_permanently_title": "حذف نهائي",
+    "delete_permanently_confirm": "سيتم حذف هذا العنصر نهائياً. هذا الإجراء لا يمكن التراجع عنه.",
+    "delete_permanently_success": "تم حذف العنصر نهائياً",
+    "deleted_at": "محذوف في",
+    "payment": "دفعة",
+    "movement": "حركة الصندوق",
+    "continue": "متابعة",
+    "enter_password": "تأكيد بكلمة المرور",
+    "password_placeholder": "أدخل كلمة المرور",
+    "wrong_password": "كلمة المرور غير صحيحة",
+    "confirm": "تأكيد"
   }
 }

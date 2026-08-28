@@ -27,6 +27,7 @@ interface Teacher {
   email: string | null;
   salaryType: string;
   salaryAmount: number;
+  salaryAmountTeacher?: number;
   subjects: SubjectInfo[];
 }
 
@@ -47,7 +48,10 @@ interface DuesSession {
   sessionDate: string;
   groupName: string | null;
   presentCount: number;
+  institutionClients?: number;
+  teacherClients?: number;
   earned: number;
+  paidStatus?: "paid" | "partial" | "unpaid";
 }
 
 interface DuesData {
@@ -57,7 +61,7 @@ interface DuesData {
   rate: number;
   monthlyMonths: number;
   sessions: DuesSession[];
-  totals: { earned: number; paid: number; remaining: number };
+  totals: { earned: number; paid: number; remaining: number; overpaid?: number };
 }
 
 const SALARY_TYPES = [
@@ -253,7 +257,14 @@ function TeacherCard({ teacher, onUpdated }: { teacher: Teacher; onUpdated: () =
         <CardContent className="space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">{salaryTypeLabel(teacher.salaryType)}</span>
-            <span className="font-medium">{formatCurrency(teacher.salaryAmount)}</span>
+            {teacher.salaryType === "per_student" ? (
+              <span>
+                <span className="block font-medium">{t("teachers.rate_institution_short")}: <span dir="ltr" className="inline-block">{teacher.salaryAmount ?? 0}%</span></span>
+                <span className="block font-medium">{t("teachers.rate_teacher_short")}: <span dir="ltr" className="inline-block">{(teacher as any).salaryAmountTeacher ?? 0}%</span></span>
+              </span>
+            ) : (
+              <span className="font-medium">{formatCurrency(teacher.salaryAmount)}</span>
+            )}
           </div>
           {teacher.subjects && teacher.subjects.length > 0 && (
             <div className="flex flex-wrap gap-1">
@@ -314,6 +325,7 @@ function TeacherFormDialog({ teacher, onClose, onSaved }: {
   const [phone, setPhone] = useState(teacher?.phone || "");
   const [salaryType, setSalaryType] = useState(teacher?.salaryType || "monthly");
   const [salaryAmount, setSalaryAmount] = useState(String(teacher?.salaryAmount || ""));
+  const [salaryAmountTeacher, setSalaryAmountTeacher] = useState(String((teacher as any)?.salaryAmountTeacher ?? ""));
   const [subjectIds, setSubjectIds] = useState<string[]>(teacher?.subjects?.map((s) => s.id) || []);
   const [allSubjects, setAllSubjects] = useState<SubjectInfo[]>([]);
   const [saving, setSaving] = useState(false);
@@ -337,6 +349,7 @@ function TeacherFormDialog({ teacher, onClose, onSaved }: {
         phone: phone || undefined,
         salaryType,
         salaryAmount: Number(salaryAmount) || 0,
+        salaryAmountTeacher: Number(salaryAmountTeacher) || 0,
         subjectIds,
       };
       const url = "/api/teachers";
@@ -359,14 +372,15 @@ function TeacherFormDialog({ teacher, onClose, onSaved }: {
 
   function handleOpenChange(open: boolean) {
     setOpen(open);
-    if (!open) {
-      if (!isEditing) {
-        setName("");
-        setPhone("");
-        setSalaryType("monthly");
-        setSalaryAmount("");
-        setSubjectIds([]);
-      }
+      if (!open) {
+        if (!isEditing) {
+          setName("");
+          setPhone("");
+          setSalaryType("monthly");
+          setSalaryAmount("");
+          setSalaryAmountTeacher("");
+          setSubjectIds([]);
+        }
       onClose?.();
     }
   }
@@ -405,16 +419,44 @@ function TeacherFormDialog({ teacher, onClose, onSaved }: {
               ))}
             </select>
           </div>
-          <div className="space-y-2">
-            <Label>{getSalaryAmountLabel(salaryType)}</Label>
-            <Input
-              type="number"
-              min="0"
-              step="100"
-              value={salaryAmount}
-              onChange={(e) => setSalaryAmount(e.target.value)}
-            />
-          </div>
+          {salaryType === "per_student" ? (
+            <div className="grid grid-cols-1 gap-3">
+              <div className="space-y-2">
+                <Label>{t("teachers.rate_institution_label")}</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={salaryAmount}
+                  onChange={(e) => setSalaryAmount(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>{t("teachers.rate_teacher_label")}</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={salaryAmountTeacher}
+                  onChange={(e) => setSalaryAmountTeacher(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">{t("teachers.rate_hint")}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label>{getSalaryAmountLabel(salaryType)}</Label>
+              <Input
+                type="number"
+                min="0"
+                step="100"
+                value={salaryAmount}
+                onChange={(e) => setSalaryAmount(e.target.value)}
+              />
+            </div>
+          )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => { if (isEditing) onClose?.(); else setOpen(false); }}>
               {t("common.cancel")}
@@ -560,7 +602,7 @@ function TeachingLogDialog({ teacher, onClose }: { teacher: Teacher; onClose: ()
               </Card>
             ))
           )}
-        </div>
+            </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>{t("common.cancel")}</Button>
@@ -655,22 +697,49 @@ function DuesDialog({ teacher, onClose, onPaid }: { teacher: Teacher; onClose: (
               {data.sessions.length === 0 ? (
                 <p className="p-4 text-center text-sm text-muted-foreground">{t("teachers.no_dues_sessions")}</p>
               ) : (
-                data.sessions.map((s) => (
-                  <Card key={s.id}>
+                data.sessions.map((s) => {
+                  const paidCls =
+                    s.paidStatus === "paid"
+                      ? "border-green-500/50 bg-green-500/5"
+                      : s.paidStatus === "partial"
+                        ? "border-amber-500/50 bg-amber-500/5"
+                        : "";
+                  const earnedCls =
+                    s.paidStatus === "paid"
+                      ? "text-green-600 font-semibold"
+                      : s.paidStatus === "partial"
+                        ? "text-amber-600 font-semibold"
+                        : "font-medium";
+                  return (
+                  <Card key={s.id} className={paidCls}>
                     <CardContent className="flex items-center justify-between gap-2 py-2.5">
                       <div>
                         <p className="text-sm font-medium">{s.groupName || "—"}</p>
                         <p className="text-xs text-muted-foreground">{formatDate(s.sessionDate)}</p>
                       </div>
                       <div className="flex items-center gap-3 text-sm">
-                        <span className="text-muted-foreground">{t("teachers.students_present", { count: s.presentCount })}</span>
-                        {data.perStudent && <span className="font-medium">{formatCurrency(s.earned)}</span>}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))
-              )}
-            </div>
+                        {data.perStudent ? (
+                          <span className="flex flex-col items-end leading-tight">
+                            <span className="text-xs text-muted-foreground">{t("teachers.rate_institution_short")}: <span className="font-medium text-foreground">{s.institutionClients ?? 0}</span></span>
+                            <span className="text-xs text-muted-foreground">{t("teachers.rate_teacher_short")}: <span className="font-medium text-foreground">{s.teacherClients ?? 0}</span></span>
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">{t("teachers.students_present", { count: s.presentCount })}</span>
+                        )}
+                        {data.perStudent && <span className={earnedCls}>{formatCurrency(s.earned)}</span>}
+                       </div>
+                     </CardContent>
+                   </Card>
+                   );
+                 })
+               )}
+             </div>
+
+            {(data.totals.overpaid ?? 0) > 0 && (
+              <div className="rounded-lg bg-sky-500/10 px-3 py-2 text-sm">
+                {t("teachers.overpaid_hint", { amount: formatCurrency(data.totals.overpaid ?? 0) })}
+              </div>
+            )}
 
             {data.totals.remaining > 0 && (
               <div className="rounded-lg bg-amber-500/10 px-3 py-2 text-sm">

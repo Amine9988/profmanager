@@ -33,6 +33,7 @@ export function RecordPaymentDialog({ studentId: preselectedId, studentName, onR
   const [groups, setGroups] = useState<{ id: string; name: string; pricePerSession: number | null; priceType: string; students: { id: string; fullName: string }[] }[]>([]);
   const [groupId, setGroupId] = useState("");
   const [studentId, setStudentId] = useState(preselectedId || "");
+  const [discount, setDiscount] = useState("0");
   const [paymentDate, setPaymentDate] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -67,6 +68,7 @@ export function RecordPaymentDialog({ studentId: preselectedId, studentName, onR
           setGroupId("");
           setStudentId("");
         }
+        setDiscount("0");
         setAmount("");
       });
     }
@@ -77,9 +79,22 @@ export function RecordPaymentDialog({ studentId: preselectedId, studentName, onR
   const displayGroups = preselectedId ? (studentGroups.length > 0 ? studentGroups : groups) : groups;
   const availableStudents = selectedGroup?.students || [];
   const selectedStudentData = students.find((s) => s.id === studentId);
-  const amountDue = selectedGroup?.pricePerSession ?? 0;
+  const basePrice = selectedGroup?.pricePerSession ?? 0;
+  const discountPct = Math.min(100, Math.max(0, Number(discount) || 0));
+  const amountDue = basePrice > 0 ? Math.round(basePrice * (1 - discountPct / 100)) : 0;
   const advanceBalance = selectedStudentData?.advanceBalance ?? 0;
   const maxAllowed = amountDue > 0 ? amountDue : Infinity;
+
+  function applyDiscount(pctStr: string, gid = groupId, sid = studentId) {
+    setDiscount(pctStr);
+    const pct = Math.min(100, Math.max(0, Number(pctStr) || 0));
+    const g = groups.find((x) => x.id === gid);
+    if (g?.pricePerSession) {
+      const due = Math.round(g.pricePerSession * (1 - pct / 100));
+      setAmount(String(due));
+    }
+    void sid;
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -94,7 +109,7 @@ export function RecordPaymentDialog({ studentId: preselectedId, studentName, onR
       const res = await fetch("/api/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ studentId, groupId, month, amount: amt, paymentDate }),
+        body: JSON.stringify({ studentId, groupId, month, amount: amt, paymentDate, discountPercent: discountPct }),
       });
       if (res.ok) {
         toast.success(t("payments.paymentRecorded"));
@@ -137,9 +152,7 @@ export function RecordPaymentDialog({ studentId: preselectedId, studentName, onR
                 const gid = e.target.value;
                 setGroupId(gid);
                 if (!preselectedId) setStudentId("");
-                const g = groups.find((x) => x.id === gid);
-                if (g?.pricePerSession) setAmount(String(g.pricePerSession));
-                else setAmount("");
+                applyDiscount(discount, gid);
               }}
               required
               className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
@@ -188,20 +201,43 @@ export function RecordPaymentDialog({ studentId: preselectedId, studentName, onR
             </div>
           </div>
 
-          {groupId && studentId && (amountDue > 0 || advanceBalance > 0) && (
+          {groupId && studentId && basePrice > 0 && (
+            <div className="space-y-2">
+              <Label htmlFor="discount">{t("payments.discount_label")}</Label>
+              <Input
+                id="discount"
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                value={discount}
+                onChange={(e) => applyDiscount(e.target.value)}
+              />
+              <div className="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">{t("payments.base_price")}</span>
+                  <span>{formatCurrency(basePrice)}</span>
+                </div>
+                {discountPct > 0 && (
+                  <div className="flex justify-between text-green-600">
+                    <span>{t("payments.discount_value", { pct: discountPct })}</span>
+                    <span>−{formatCurrency(basePrice - amountDue)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-semibold border-t pt-1.5">
+                  <span>{t("payments.due_after_discount")}</span>
+                  <span>{formatCurrency(amountDue)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {groupId && studentId && (amountDue > 0 || advanceBalance > 0) && advanceBalance > 0 && (
             <div className="rounded-lg border bg-muted/30 p-4 space-y-2">
-              {amountDue > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">{t("payments.amount_due")}</span>
-                  <span className="font-semibold">{formatCurrency(amountDue)}</span>
-                </div>
-              )}
-              {advanceBalance > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">{t("payments.advance")}</span>
-                  <span className="font-semibold text-blue-600">{formatCurrency(advanceBalance)}</span>
-                </div>
-              )}
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">{t("payments.advance")}</span>
+                <span className="font-semibold text-blue-600">{formatCurrency(advanceBalance)}</span>
+              </div>
             </div>
           )}
 

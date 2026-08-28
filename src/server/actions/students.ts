@@ -10,13 +10,19 @@ import { sessionEndTimestamp } from "@/lib/session-time";
 export type ActionResult = { error?: string; success?: boolean; id?: string };
 
 export async function getStudents() {
+  const t0 = Date.now();
   const { tenantId, supabase } = await getTenantContext();
+  const t1 = Date.now();
 
   const { data: students, error } = await supabase
     .from("students")
-    .select("*, group_students(*, groups(*))")
+    .select("id, fullName, gradeLevel, schoolName, phone, fatherPhone, email, address, notes, monthlyFee, subscriptionStart, status, clientType")
     .eq("tenantId", tenantId)
-    .order("fullName", { ascending: true });
+    .order("fullName", { ascending: true })
+    .limit(100);
+  const t2 = Date.now();
+  console.log(`[perf] getStudents: getTenantContext ${t1-t0}ms, query ${t2-t1}ms, total ${Date.now()-t0}ms, rows=${students?.length||0}`);
+  if (error) console.log(`[perf] getStudents error`, error);
 
   if (error) {
     console.error("[getStudents] Query error:", error.message, "SQL:", error.details);
@@ -129,6 +135,7 @@ export async function createStudent(_prevState: ActionResult, formData: FormData
       monthlyFee: formData.get("monthlyFee"),
       subscriptionStart: formData.get("subscriptionStart"),
       billingType: formData.get("billingType") || "monthly",
+      clientType: formData.get("clientType") || "institution",
     });
 
     if (!parsed.success) {
@@ -151,6 +158,7 @@ export async function createStudent(_prevState: ActionResult, formData: FormData
       monthlyFee: parsed.data.monthlyFee,
       subscriptionStart: parsed.data.subscriptionStart || null,
       billingType: parsed.data.billingType,
+      clientType: parsed.data.clientType,
       status: "active",
       enrolledAt: now,
       createdById: ctx.userId,
@@ -190,6 +198,7 @@ export async function updateStudent(studentId: string, _prevState: ActionResult,
       monthlyFee: formData.get("monthlyFee"),
       subscriptionStart: formData.get("subscriptionStart"),
       billingType: formData.get("billingType") || "monthly",
+      clientType: formData.get("clientType") || "institution",
     });
 
     if (!parsed.success) {
@@ -209,6 +218,7 @@ export async function updateStudent(studentId: string, _prevState: ActionResult,
       monthlyFee: parsed.data.monthlyFee,
       subscriptionStart: parsed.data.subscriptionStart || null,
       billingType: parsed.data.billingType,
+      clientType: parsed.data.clientType,
     }).eq("id", studentId).eq("tenantId", ctx.tenantId).select();
 
     if (!result || result.length === 0) {

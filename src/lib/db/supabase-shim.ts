@@ -1,4 +1,4 @@
-import initSqlJs, { SqlJsStatic, Database as SqlJsDatabase } from "sql.js";
+﻿import initSqlJs, { SqlJsStatic, Database as SqlJsDatabase } from "sql.js";
 import path from "path";
 import fs from "fs";
 import { SCHEMA_SQL, SEED_SQL, DEFAULT_TENANT_ID, DEFAULT_USER_ID } from "./schema";
@@ -37,6 +37,7 @@ let _dirty = false;
 let _lastLoadMtime = 0;
 let _lastLoadSize = 0;
 let _backupState: "local" | "restored" | "absent" | "unknown" = "unknown";
+let _heavyBackfillDone = false;
 
 export function getDbPath(): string {
   if (_dbPath) return _dbPath;
@@ -213,7 +214,9 @@ export async function getDb(): Promise<SqlJsDatabase> {
   // Backfill legacy payments (recorded before groupId existed): attribute each
   // to the active group whose price matches the amount due (earliest enrollment wins).
   try {
-    _db.exec(`
+    const _nullPay = (_db.exec("SELECT count(*) FROM payments WHERE groupId IS NULL")[0]?.values[0][0] as number) || 0;
+    if (_nullPay > 0) {
+      _db.exec(`
       UPDATE payments
       SET groupId = (
         SELECT gs.groupId
@@ -234,16 +237,30 @@ export async function getDb(): Promise<SqlJsDatabase> {
             AND g2.pricePerSession = payments.amountDue
         )
     `);
+    }
   } catch {}
   // Runtime migrations
   try { _db.exec("ALTER TABLE tenants ADD COLUMN schoolPhone TEXT"); } catch {}
   try { _db.exec("ALTER TABLE tenants ADD COLUMN schoolLogo TEXT"); } catch {}
   try { _db.exec("ALTER TABLE students ADD COLUMN fatherPhone TEXT"); } catch {}
+try { _db.exec("ALTER TABLE students ADD COLUMN clientType TEXT NOT NULL DEFAULT 'institution'"); } catch {}
+try { _db.exec("ALTER TABLE teachers ADD COLUMN salaryAmountTeacher REAL NOT NULL DEFAULT 0"); } catch {}
+try { _db.exec("ALTER TABLE group_students ADD COLUMN clientType TEXT NOT NULL DEFAULT 'institution'"); } catch {}
+try { _db.exec("UPDATE group_students SET clientType = COALESCE((SELECT clientType FROM students WHERE students.id = group_students.studentId), 'institution') WHERE clientType = 'institution' AND EXISTS (SELECT 1 FROM students WHERE students.id = group_students.studentId AND students.clientType = 'teacher')"); } catch {}
+// Attendance upsert relies on a real uniqueness constraint; without this index
+// repeated marks silently pile up duplicate rows and inflate presence counts.
+try {
+  _db.exec("DELETE FROM attendances WHERE rowid NOT IN (SELECT MIN(rowid) FROM attendances GROUP BY sessionId, studentId)");
+  _db.exec("CREATE UNIQUE INDEX IF NOT EXISTS ux_attendances_session_student ON attendances(sessionId, studentId)");
+} catch {}
+try { _db.exec("ALTER TABLE payments ADD COLUMN discountPercent REAL NOT NULL DEFAULT 0"); } catch {}
+try { _db.exec(`CREATE TABLE IF NOT EXISTS deleted_items (id TEXT PRIMARY KEY, tenantId TEXT NOT NULL, userId TEXT NOT NULL, sourceType TEXT NOT NULL, originalData TEXT NOT NULL, description TEXT, deletedAt TEXT NOT NULL)`); } catch {}
   try { _db.exec("ALTER TABLE users ADD COLUMN passwordHash TEXT"); } catch {}
   try { _db.exec("ALTER TABLE tenants ADD COLUMN trialStartsAt TEXT"); } catch {}
   try { _db.exec("ALTER TABLE tenants ADD COLUMN trialEndsAt TEXT"); } catch {}
   try { _db.exec(`ALTER TABLE "groups" ADD COLUMN sessionsIncluded INTEGER`); } catch {}
   try { _db.exec(`ALTER TABLE "groups" ADD COLUMN color TEXT`); } catch {}
+  try { _db.exec(`ALTER TABLE "groups" ADD COLUMN expiresAt TEXT`); } catch {}
   try { _db.exec("ALTER TABLE group_students ADD COLUMN remainingSessions INTEGER"); } catch {}
   try { _db.exec("ALTER TABLE group_students ADD COLUMN consumedSessions INTEGER DEFAULT 0"); } catch {}
   try { _db.exec("ALTER TABLE sessions ADD COLUMN creditsConsumed INTEGER DEFAULT 0"); } catch {}
@@ -279,7 +296,7 @@ export async function getDb(): Promise<SqlJsDatabase> {
       // Only sessions already officially consumed count here. Sessions still
       // creditsConsumed=0 are accounted for by consumeExpiredSessionCredits
       // itself (which sets the flag right after incrementing the counter), so
-      // they must NOT be tallied twice — that was the "2 بدل 3" overcount.
+      // they must NOT be tallied twice â€” that was the "2 Ø¨Ø¯Ù„ 3" overcount.
       if (!gId || status === "cancelled" || Number(creditsConsumed) !== 1) continue;
       const m0 = String(startTime || "").match(/^(\d{1,2}):(\d{2})/);
       const m1 = String(endTime || "").match(/^(\d{1,2}):(\d{2})/);
@@ -350,6 +367,21 @@ export async function getDb(): Promise<SqlJsDatabase> {
     expiresAt TEXT NOT NULL
   )`);
   _db.exec("CREATE INDEX IF NOT EXISTS idx_auth_sessions_tokenHash ON auth_sessions(tokenHash)");
+  // Performance indexes for 10k+ scale
+  try { _db.exec("CREATE INDEX IF NOT EXISTS idx_students_tenant ON students(tenantId)"); } catch {}
+  try { _db.exec("CREATE INDEX IF NOT EXISTS idx_students_tenant_fullName ON students(tenantId, fullName)"); } catch {}
+  try { _db.exec("CREATE INDEX IF NOT EXISTS idx_teachers_tenant ON teachers(tenantId)"); } catch {}
+  try { _db.exec('CREATE INDEX IF NOT EXISTS idx_groups_tenant ON "groups"(tenantId)'); } catch {}
+  try { _db.exec('CREATE INDEX IF NOT EXISTS idx_groups_tenant_name ON "groups"(tenantId, name)'); } catch {}
+  try { _db.exec("CREATE INDEX IF NOT EXISTS idx_payments_tenant_month ON payments(tenantId, month)"); } catch {}
+  try { _db.exec("CREATE INDEX IF NOT EXISTS idx_payments_tenant_student ON payments(tenantId, studentId)"); } catch {}
+  try { _db.exec("CREATE INDEX IF NOT EXISTS idx_cash_tenant_date ON cash_movements(tenantId, date)"); } catch {}
+  try { _db.exec("CREATE INDEX IF NOT EXISTS idx_cash_tenant_created ON cash_movements(tenantId, createdAt)"); } catch {}
+  try { _db.exec("CREATE INDEX IF NOT EXISTS idx_group_students_tenant_group ON group_students(tenantId, groupId)"); } catch {}
+  try { _db.exec("CREATE INDEX IF NOT EXISTS idx_group_students_student ON group_students(studentId)"); } catch {}
+  try { _db.exec("CREATE INDEX IF NOT EXISTS idx_sessions_tenant_date ON sessions(tenantId, sessionDate)"); } catch {}
+  try { _db.exec("CREATE INDEX IF NOT EXISTS idx_sessions_group ON sessions(groupId)"); } catch {}
+  // Mark dirty if indexes added
   const tenantCount = (_db.exec(`SELECT count(*) FROM tenants`)?.[0]?.values?.[0]?.[0] as number) || 0;
   if (tenantCount === 0) {
     const nowIso = new Date().toISOString();
@@ -832,7 +864,10 @@ class QueryBuilder implements PromiseLike<QueryResult> {
 
     for (const row of rows) {
       let pk: string;
-      if (row[idKey] === undefined || row[idKey] === null) {
+      if (row.__rid__ !== undefined && row.__rid__ !== null) {
+        // Physical row identity — immune to duplicate column values.
+        pk = "rid|" + String(row.__rid__);
+      } else if (row[idKey] === undefined || row[idKey] === null) {
         const parts: string[] = [];
         for (const [k, v] of Object.entries(row)) {
           let isJoin = false;
@@ -848,6 +883,7 @@ class QueryBuilder implements PromiseLike<QueryResult> {
       if (!grouped.has(pk)) {
         const base: Record<string, any> = {};
         for (const [k, v] of Object.entries(row)) {
+          if (k === "__rid__") continue;
           let isJoin = false;
           for (const jk of allKeys) { if (k.startsWith(jk.prefix)) { isJoin = true; break; } }
           if (!isJoin) base[k] = v;
@@ -920,19 +956,33 @@ class QueryBuilder implements PromiseLike<QueryResult> {
   }
 
   private async executeSelect(): Promise<QueryResult> {
+    const _t0 = Date.now();
+    const _dbgTable = this.table;
+    const _dbgCols = this.columns.slice(0,80);
     try {
       const parsed = parseSelectColumns(this.columns);
+      const _t1 = Date.now();
       const mainTable = escapeIdent(this.table);
       let selectCols = "";
       const prefixedCols: string[] = [];
 
-      if (parsed.columns.includes("*")) {
-        prefixedCols.push(`${mainTable}.*`);
-      } else {
-        for (const c of parsed.columns) {
-          const cleaned = c.replace(/^[\w]+\s*:\s*/, "");
-          prefixedCols.push(`${mainTable}.${escapeIdent(cleaned)}`);
-        }
+    if (parsed.columns.includes("*")) {
+      prefixedCols.push(`${mainTable}.*`);
+    } else {
+      for (const c of parsed.columns) {
+        const cleaned = c.replace(/^[\w]+\s*:\s*/, "");
+        prefixedCols.push(`${mainTable}.${escapeIdent(cleaned)}`);
+      }
+    }
+    if (parsed.joins.length > 0) {
+      prefixedCols.unshift(`${mainTable}.rowid AS __rid__`);
+    }
+      // ROOT FIX: always carry the physical rowid when joins are present.
+      // nestResults groups rows by this key; without it, rows lacking a
+      // selected unique column collapse into one (e.g. two attendances with
+      // the same sessionId+status merged into one).
+      if (parsed.joins.length > 0) {
+        prefixedCols.unshift(`${mainTable}.rowid AS __rid__`);
       }
 
       const AGG_FNS = new Set(["count", "sum", "avg", "min", "max"]);
@@ -1005,7 +1055,7 @@ class QueryBuilder implements PromiseLike<QueryResult> {
               }
               return `${escapeIdent(tablePart)}.${escapeIdent(colPart)} ${o.ascending ? "ASC" : "DESC"}`;
             }
-            return `${escapeIdent(col)} ${o.ascending ? "ASC" : "DESC"}`;
+            return `${mainTable}.${escapeIdent(col)} ${o.ascending ? "ASC" : "DESC"}`;
           }).join(", ")
         : "";
       const limitClause = this.limitCount !== null ? `LIMIT ${this.limitCount}` : "";
@@ -1022,9 +1072,13 @@ class QueryBuilder implements PromiseLike<QueryResult> {
         console.error("[executeSelect] SQL ERROR:", this.table, msg, sql);
         return { data: null, error: { message: msg, code: "QUERY_FAILED", details: sql, hint: "" } };
       }
+      const _dt = Date.now() - _t0;
+      if (_dt > 500) console.log(`[slow-query] ${this.table} took ${_dt}ms sql=${sql.slice(0,400)} rows=${rows.length}`);
 
       if (parsed.joins.length > 0) {
         rows = this.nestResults(rows, parsed);
+        const _dt2 = Date.now() - _t0;
+        if (_dt2 > 500) console.log(`[slow-nest] ${this.table} nest took ${_dt2 - _dt}ms total ${_dt2}ms`);
       }
 
       if (this.returnSingle) {
@@ -1073,7 +1127,8 @@ class QueryBuilder implements PromiseLike<QueryResult> {
       prepare(this.db, "BEGIN").run();
       for (const item of arr) {
         const record = this.ensureTimestamps(item as Record<string, any>, tableCols, now);
-        const columns = Object.keys(record);
+        const columns = Object.keys(record).filter((c) => tableCols.has(c) && record[c] !== undefined);
+        if (columns.length === 0) continue;
         const colList = columns.map((c) => escapeIdent(c)).join(", ");
         const placeholders = columns.map(() => "?").join(", ");
         const values = columns.map((c) => record[c]);
@@ -1112,7 +1167,8 @@ class QueryBuilder implements PromiseLike<QueryResult> {
     const withTimestamps = { ...vals };
     if (tableCols.has("updatedAt") && withTimestamps.updatedAt === undefined) withTimestamps.updatedAt = now;
     const mainTable = escapeIdent(this.table);
-    const columns = Object.keys(withTimestamps);
+    const columns = Object.keys(withTimestamps).filter((c) => tableCols.has(c) && withTimestamps[c] !== undefined);
+    if (columns.length === 0) return { data: null, error: { message: "No columns to update", code: "400", details: "", hint: "" } };
     const setClause = columns.map((c) => `${escapeIdent(c)} = ?`).join(", ");
     const setValues = columns.map((c) => withTimestamps[c]);
     const { sql: whereClause, params } = this.buildWhere();
@@ -1324,3 +1380,7 @@ function createLocalClient(options?: { readonly?: boolean }) {
 }
 
 export { createLocalClient, QueryBuilder, LocalAuth };
+
+
+
+

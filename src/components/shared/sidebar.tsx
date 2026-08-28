@@ -23,6 +23,7 @@ import {
   DoorOpen,
   BookOpen,
   ScrollText,
+  Trash2,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -40,6 +41,7 @@ const NAV_ITEMS = [
   { href: "/teachers", key: "teachers", icon: GraduationCap },
   { href: "/groups", key: "groups", icon: UsersRound },
   { href: "/certificates", key: "certificates", icon: ScrollText },
+  { href: "/trash", key: "trash", icon: Trash2 },
   { href: "/settings", key: "settings", icon: Settings },
 ];
 

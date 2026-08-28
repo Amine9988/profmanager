@@ -1,13 +1,46 @@
-"use server";
+﻿"use server";
 
 import { randomUUID } from "crypto";
 import { getTenantContext, requirePermission, createAuditLog, AuthError } from "@/lib/auth";
 import { revalidateFullApp } from "@/lib/cache";
 import { getT } from "@/lib/i18n";
 import type { ActionResult } from "./students";
+import { toDateInputValue } from "@/lib/group-form";
 
 export type SessionType = "regular" | "extra" | "makeup";
+
+/** Finds an IDENTICAL non-cancelled session (same group, date, start AND end
+ *  time) â€” a pure double-click duplicate. Multiple lessons per day at
+ *  different times are intentionally allowed. */
+async function findIdenticalSession(
+  supabase: any,
+  tenantId: string,
+  groupId: string,
+  sessionDate: string,
+  startTime: string,
+  endTime: string
+): Promise<any | null> {
+  const date10 = String(sessionDate).slice(0, 10);
+  const { data } = await supabase
+    .from("sessions")
+    .select("id")
+    .eq("tenantId", tenantId)
+    .eq("groupId", groupId)
+    .like("sessionDate", `${date10}%`)
+    .eq("startTime", startTime)
+    .eq("endTime", endTime)
+    .neq("status", "cancelled");
+  return (data && data[0]) || null;
+}
 export type SessionStatus = "scheduled" | "completed" | "cancelled";
+
+function parseLocalYmd(value: unknown): Date | null {
+  const s = toDateInputValue(value);
+  if (!s) return null;
+  const [y, m, d] = s.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d);
+}
 
 export async function getSchoolYearSettings() {
   const ctx = await getTenantContext();
@@ -175,8 +208,21 @@ export async function generateGroupSessions(groupId: string): Promise<ActionResu
       return { error: t("errors.school_year_not_set") };
     }
 
-    const startDate = new Date(yearStart);
-    const endDate = new Date(yearEnd);
+    const { data: groupRow } = await ctx.supabase
+      .from("groups")
+      .select("expiresAt")
+      .eq("id", groupId)
+      .eq("tenantId", ctx.tenantId)
+      .maybeSingle();
+
+    const startDate = parseLocalYmd(yearStart);
+    const yearEndDate = parseLocalYmd(yearEnd);
+    if (!startDate || !yearEndDate) {
+      return { error: t("errors.school_year_not_set") };
+    }
+    const groupEnd = parseLocalYmd(groupRow?.expiresAt);
+    const endDate =
+      groupEnd && groupEnd.getTime() < yearEndDate.getTime() ? groupEnd : yearEndDate;
 
     const now = new Date().toISOString();
     const { data: slots } = await ctx.supabase.from("schedule_slots").select("*").eq("groupId", groupId).eq("tenantId", ctx.tenantId);
@@ -193,16 +239,19 @@ export async function generateGroupSessions(groupId: string): Promise<ActionResu
     }
     
     const sessionsToCreate: Record<string, unknown>[] = [];
+    const seenInBatch = new Set<string>();
     const current = new Date(startDate);
-    while (current <= endDate) {
+    while (current.getTime() <= endDate.getTime()) {
       const dateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}-${String(current.getDate()).padStart(2, "0")}`;
       for (const slot of slots) {
-        if (slot.dayOfWeek === current.getDay()) {
+        if (Number(slot.dayOfWeek) === current.getDay()) {
           const key = `${dateStr}|${slot.id}`;
           const existing = existingMap.get(key);
-          if (existing) {
-            if (existing.has("cancelled") || existing.has("completed")) continue;
-          }
+          // Preserve completed/cancelled history; anything else gets recreated
+          // below after the scheduled purge.
+          if (existing && (existing.has("completed") || existing.has("cancelled"))) continue;
+          if (seenInBatch.has(key)) continue;
+          seenInBatch.add(key);
           sessionsToCreate.push({
             id: randomUUID(),
             tenantId: ctx.tenantId,
@@ -224,8 +273,17 @@ export async function generateGroupSessions(groupId: string): Promise<ActionResu
     // Delete previously generated scheduled sessions
     await ctx.supabase.from("sessions").delete().eq("groupId", groupId).eq("tenantId", ctx.tenantId).eq("status", "scheduled");
 
-    if (sessionsToCreate.length > 0) {
-      const { error: insertError } = await ctx.supabase.from("sessions").insert(sessionsToCreate);
+    // Re-read survivors (completed/cancelled) and drop any batch row whose
+    // date|slot still exists â€” guards against concurrent regenerations.
+    const survivorsRes = await ctx.supabase.from("sessions").select("sessionDate, scheduleSlotId").eq("groupId", groupId).eq("tenantId", ctx.tenantId);
+    const survivorKeys = new Set((survivorsRes.data || []).map((ex: any) => `${ex.sessionDate}|${ex.scheduleSlotId}`));
+    const finalBatch = sessionsToCreate.filter((s) => {
+      const key = `${String(s.sessionDate)}|${String(s.scheduleSlotId)}`;
+      return !survivorKeys.has(key);
+    });
+
+    if (finalBatch.length > 0) {
+      const { error: insertError } = await ctx.supabase.from("sessions").insert(finalBatch);
       if (insertError) {
         return { error: insertError.message };
       }
@@ -275,6 +333,12 @@ export async function createExtraSession(formData: FormData): Promise<ActionResu
     if (!groupId || !sessionDate || !startTime || !endTime) return { error: t("errors.invalid_data") };
     const { data: group } = await ctx.supabase.from("groups").select("id").eq("id", groupId).eq("tenantId", ctx.tenantId).single();
     if (!group) return { error: t("errors.group_not_found") };
+
+    // Block duplicate lessons: reject when a non-cancelled session of this
+    // group already covers the same date with an overlapping time window.
+    const overlap = await findIdenticalSession(ctx.supabase, ctx.tenantId, groupId, sessionDate, startTime, endTime);
+    if (overlap) return { error: t("errors.session_overlap") };
+
     const now = new Date().toISOString();
     await ctx.supabase.from("sessions").insert({
       id: randomUUID(),
@@ -308,6 +372,11 @@ export async function createMakeupSession(formData: FormData): Promise<ActionRes
     if (!groupId || !sessionDate || !startTime || !endTime) return { error: t("errors.invalid_data") };
     const { data: group } = await ctx.supabase.from("groups").select("id").eq("id", groupId).eq("tenantId", ctx.tenantId).single();
     if (!group) return { error: t("errors.group_not_found") };
+
+    // Block duplicate lessons (same rule as extra sessions).
+    const overlapMakeup = await findIdenticalSession(ctx.supabase, ctx.tenantId, groupId, sessionDate, startTime, endTime);
+    if (overlapMakeup) return { error: t("errors.session_overlap") };
+
     const now = new Date().toISOString();
     await ctx.supabase.from("sessions").insert({
       id: randomUUID(),
@@ -448,3 +517,4 @@ export async function getSessionStats() {
   ]);
   return { total: total ?? 0, completed: completed ?? 0, cancelled: cancelled ?? 0, extra: extra ?? 0, makeup: makeup ?? 0, remaining: remaining ?? 0 };
 }
+

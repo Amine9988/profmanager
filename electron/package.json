@@ -1,6 +1,6 @@
 {
   "name": "profmanager-desktop",
-  "version": "1.0.11",
+  "version": "1.0.18",
   "description": "ProfManager — Gestion de cours particuliers",
   "main": "main.js",
   "scripts": {
@@ -26,11 +26,20 @@
       "output": "dist"
     },
     "asar": false,
-    "electronLanguages": ["fr", "ar", "en-US", "en-GB"],
+    "electronLanguages": [
+      "fr",
+      "ar",
+      "en-US",
+      "en-GB"
+    ],
     "electronDist": "node_modules/electron/dist",
     "files": [
       "main.js",
       "preload.js",
+      "updater.js",
+      "license.js",
+      "activation.html",
+      "activation-preload.js",
       "package.json",
       "public/icon.ico"
     ],
@@ -42,20 +51,43 @@
       {
         "from": "platform-tools",
         "to": "platform-tools"
+      },
+      {
+        "from": "build/app-update.yml",
+        "to": "."
       }
     ],
-
     "icon": "public/icon.ico",
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "signAndEditExecutable": true,
       "signExecutable": false,
       "icon": "public/icon.ico"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "icon": "public/icon.png",
+      "category": "public.app-category.education",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "entitlements": null,
+      "entitlementsInherit": null
     },
     "nsis": {
       "oneClick": false,
@@ -65,15 +97,17 @@
       "createStartMenuShortcut": true,
       "shortcutName": "ProfManager",
       "uninstallDisplayName": "ProfManager",
-      "installerIcon": "public/icon.ico",
-      "uninstallerIcon": "public/icon.ico",
-      "installerHeaderIcon": "public/icon.ico",
       "include": "build/installer.nsh"
     },
     "publish": {
-      "provider": "github",
-      "owner": "slimaniamine",
-      "repo": "profmanager"
+      "provider": "generic",
+      "url": "https://pub-a093dfe3d51241128f512f880dc36324.r2.dev/",
+      "channel": "latest"
     }
+  },
+  "dependencies": {
+    "electron-log": "^5.4.4",
+    "electron-updater": "^6.8.9",
+    "node-machine-id": "^1.1.12"
   }
 }

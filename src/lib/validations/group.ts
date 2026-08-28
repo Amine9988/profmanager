@@ -2,15 +2,16 @@ import { z } from "zod";
 
 export const groupSchema = z.object({
   name: z.string().min(2, "Group name is required"),
-  subjectId: z.string().uuid("Invalid subject").optional().nullable(),
+  subjectId: z.string().optional().nullable(),
   level: z.string().optional().nullable(),
   maxCapacity: z.coerce.number().int().min(1).max(100).default(10),
   pricePerSession: z.coerce.number().min(0).optional().nullable(),
   priceType: z.enum(["per_session", "monthly", "package"]).default("per_session"),
   sessionsIncluded: z.coerce.number().int().min(0).optional().nullable(),
-  teacherId: z.string().uuid("Invalid teacher").optional().nullable(),
+  teacherId: z.string().optional().nullable(),
   roomId: z.string().optional().nullable(),
-  color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Invalid color").optional().nullable(),
+  color: z.string().optional().nullable(),
+  expiresAt: z.string().optional().nullable(),
 });
 
 export type GroupInput = z.infer<typeof groupSchema>;

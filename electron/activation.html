@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<title>تفعيل ProfManager</title>
+<style>
+  :root {
+    --ink: #1c1c1c;
+    --paper: #fafaf8;
+    --line: #dcdad4;
+    --accent: #2f5233;
+    --accent-dim: #e7ede8;
+    --error: #a1372e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, "Segoe UI", Tahoma, sans-serif;
+    padding: 24px 22px;
+  }
+  h1 { font-size: 17px; font-weight: 600; margin: 0 0 4px; }
+  .sub { font-size: 12.5px; color: #777; margin: 0 0 18px; line-height: 1.6; }
+  label { display: block; font-size: 12.5px; font-weight: 600; color: #444; margin-bottom: 5px; }
+  .hwid-box {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+    margin-bottom: 14px;
+  }
+  .hwid-box input {
+    flex: 1;
+    padding: 9px 10px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    font-size: 13px;
+    background: #fff;
+    font-family: ui-monospace, monospace;
+    direction: ltr;
+    text-align: left;
+  }
+  .hwid-box button {
+    width: auto;
+    margin: 0;
+    padding: 0 14px;
+    border: none;
+    border-radius: 6px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .hwid-box button:hover { filter: brightness(1.08); }
+  input[type="text"] {
+    width: 100%;
+    padding: 9px 10px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    font-size: 13.5px;
+    background: #fff;
+    font-family: inherit;
+    direction: ltr;
+    text-align: left;
+  }
+  input:focus { outline: none; border-color: var(--accent); }
+  button.primary {
+    width: 100%;
+    margin-top: 16px;
+    padding: 11px;
+    border: none;
+    border-radius: 6px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button.primary:disabled { opacity: 0.5; cursor: default; }
+  button.primary:hover:not(:disabled) { filter: brightness(1.08); }
+  #msg { margin-top: 14px; font-size: 12.5px; line-height: 1.5; }
+  #msg.ok { color: var(--accent); }
+  #msg.err { color: var(--error); }
+  .hint { font-size: 11.5px; color: #999; margin-top: 6px; line-height: 1.5; }
+</style>
+</head>
+<body>
+  <h1>تفعيل ProfManager</h1>
+  <p class="sub">
+    هذا التطبيق مرخّص لكل جهاز على حدة. انسخ بصمة جهازك وأرسلها إلى المطوّر
+    ليصدر لك مفتاح تفعيل، ثم ألصق المفتاح في الأسفل.
+  </p>
+
+  <label for="hwid">بصمة هذا الجهاز (Hardware ID)</label>
+  <div class="hwid-box">
+    <input id="hwid" readonly />
+    <button id="copyBtn">نسخ</button>
+  </div>
+
+  <label for="key">مفتاح التفعيل</label>
+  <input id="key" type="text" placeholder="الصق مفتاح التفعيل الذي استلمته" />
+
+  <button id="activateBtn" class="primary">تفعيل</button>
+
+  <div id="msg"></div>
+  <div class="hint">تعمل البصمة والمفتاح بشكل كامل دون اتصال بالإنترنت.</div>
+
+  <script>
+    const hwidEl = document.getElementById('hwid');
+    const copyBtn = document.getElementById('copyBtn');
+    const keyEl = document.getElementById('key');
+    const activateBtn = document.getElementById('activateBtn');
+    const msg = document.getElementById('msg');
+
+    function setMsg(text, ok) {
+      msg.textContent = text;
+      msg.className = ok ? 'ok' : 'err';
+    }
+
+    window.activation.getHardwareId().then((hwid) => {
+      hwidEl.value = hwid;
+    });
+
+    copyBtn.addEventListener('click', () => {
+      hwidEl.select();
+      navigator.clipboard.writeText(hwidEl.value).then(() => {
+        copyBtn.textContent = 'تم النسخ ✓';
+        setTimeout(() => (copyBtn.textContent = 'نسخ'), 1500);
+      });
+    });
+
+    activateBtn.addEventListener('click', async () => {
+      const licenseKey = keyEl.value.trim();
+      if (!licenseKey) {
+        setMsg('يرجى لصق مفتاح التفعيل أولاً.', false);
+        return;
+      }
+      activateBtn.disabled = true;
+      activateBtn.textContent = 'جاري التفعيل...';
+      setMsg('', true);
+      const result = await window.activation.activateLicense(licenseKey);
+      if (result.valid) {
+        setMsg('تم التفعيل بنجاح. جاري فتح التطبيق...', true);
+      } else {
+        activateBtn.disabled = false;
+        activateBtn.textContent = 'تفعيل';
+        setMsg(result.reason || 'فشل التفعيل.', false);
+      }
+    });
+
+    keyEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') activateBtn.click();
+    });
+  </script>
+</body>
+</html>

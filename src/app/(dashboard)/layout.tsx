@@ -7,6 +7,7 @@ import { DataCacheProvider } from "@/lib/data-cache";
 import { getTenantContext } from "@/lib/auth";
 import { getLocale, getT } from "@/lib/i18n";
 import { AlertTriangle } from "lucide-react";
+import { DialogCleanup } from "@/components/shared/dialog-cleanup";
 import dynamic from "next/dynamic";
 
 const CommandPalette = dynamic(
@@ -42,6 +43,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <BottomNav />
         </div>
         <CommandPalette />
+        <DialogCleanup />
       </div>
       </DataCacheProvider>
     </LocaleProvider>

@@ -7,6 +7,7 @@ import { ExtraSessionDialog } from "@/components/groups/extra-session-dialog";
 import { EditExtraSessionDialog } from "@/components/groups/edit-extra-session-dialog";
 import { DeleteExtraSessionButton } from "@/components/groups/delete-extra-session-button";
 import { EnrollStudentDialog } from "@/components/groups/enroll-student-dialog";
+import { UnenrollStudentButton } from "@/components/groups/unenroll-student-button";
 import { GroupEditDialog } from "@/components/groups/group-edit-dialog";
 import { GroupActions } from "@/components/groups/group-actions";
 import { DeleteSlotButton } from "@/components/groups/delete-slot-button";
@@ -80,6 +81,9 @@ export default async function GroupDetailPage({
             ) : (
               <span className="italic">{t("groups.teacher_none")}</span>
             )}
+            {g.expiresAt && (
+              <Badge variant="outline">{t("groups.expires_label")}: {formatDate(String(g.expiresAt).slice(0, 10))}</Badge>
+            )}
             {roomName && (
               <Badge variant="outline">{t("groups.room")}: {roomName}</Badge>
             )}
@@ -147,7 +151,7 @@ export default async function GroupDetailPage({
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">{t("groups.detail_students")}</CardTitle>
-          <EnrollStudentDialog groupId={g.id} level={g.level ?? null} availableStudents={availableStudents} />
+          <EnrollStudentDialog groupId={g.id} availableStudents={availableStudents} />
         </CardHeader>
         <CardContent>
           {g.groupStudents.length === 0 ? (
@@ -155,11 +159,18 @@ export default async function GroupDetailPage({
           ) : (
             <div className="flex flex-wrap gap-2">
               {g.groupStudents.map((gs) => (
-                <Link key={gs.id} href={`/students/${gs.studentId}`}>
-                  <Badge variant="secondary" className="cursor-pointer hover:bg-accent">
-                    {(gs.students as any)?.fullName ?? gs.studentId}
-                  </Badge>
-                </Link>
+                <span key={gs.id} className="flex items-center gap-1 rounded-full border border-transparent pr-0.5">
+                  <Link href={`/students/${gs.studentId}`}>
+                    <Badge variant="secondary" className="cursor-pointer hover:bg-accent">
+                      {(gs.students as any)?.fullName ?? gs.studentId}
+                    </Badge>
+                  </Link>
+                  <UnenrollStudentButton
+                    groupId={g.id}
+                    studentId={gs.studentId}
+                    studentName={(gs.students as any)?.fullName ?? gs.studentId}
+                  />
+                </span>
               ))}
             </div>
           )}

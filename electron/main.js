@@ -1,9 +1,18 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, Notification } = require("electron");
+const { app, BrowserWindow, Tray, Menu, nativeImage, Notification, ipcMain } = require("electron");
 const { spawn, execSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const http = require("http");
 const os = require("os");
+
+const { registerUpdater, checkForUpdates: checkUpdates } = require("./updater");
+
+const {
+  getHardwareId,
+  verifyLicense,
+  saveLicense,
+  checkLicenseOnStartup,
+} = require("./license");
 
 const LOG = path.join(os.tmpdir(), "pmanager-debug.log");
 function log(m) {
@@ -110,6 +119,7 @@ function startAdbReverse(port) {
 }
 
 let mainWindow;
+let activationWindow = null;
 let serverChild = null;
 let tray = null;
 let isQuitting = false;
@@ -430,9 +440,38 @@ function loadWithRetry(url, attempts) {
   });
 }
 
-app.whenReady().then(async () => {
-  log("ready");
+function createActivationWindow() {
+  activationWindow = new BrowserWindow({
+    width: 480,
+    height: 460,
+    resizable: false,
+    icon: resolveIcon(),
+    title: "تفعيل ProfManager",
+    webPreferences: {
+      preload: path.join(__dirname, "activation-preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  activationWindow.setMenuBarVisibility(false);
+  activationWindow.loadFile("activation.html");
+  activationWindow.on("closed", () => { activationWindow = null; });
+}
 
+ipcMain.handle("get-hardware-id", () => getHardwareId());
+
+ipcMain.handle("activate-license", (event, licenseKey) => {
+  const result = verifyLicense(licenseKey);
+  if (result.valid) {
+    saveLicense(app, licenseKey);
+    if (activationWindow && !activationWindow.isDestroyed()) activationWindow.close();
+    activationWindow = null;
+    launchMainApp();
+  }
+  return result;
+});
+
+async function launchMainApp() {
   const STANDALONE_DIR = path.join(process.resourcesPath || __dirname, "standalone-server");
   log("standalone=" + STANDALONE_DIR);
   log("server exists=" + fs.existsSync(path.join(STANDALONE_DIR, "server.js")));
@@ -447,9 +486,14 @@ app.whenReady().then(async () => {
     show: false,
     icon: resolveIcon(),
     title: "ProfManager",
-    webPreferences: { nodeIntegration: false, contextIsolation: true },
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, "preload.js"),
+    },
   });
   mainWindow.setMenuBarVisibility(false);
+  registerUpdater(mainWindow);
 
   mainWindow.on("close", (e) => {
     log("window close event (isQuitting=" + isQuitting + " serverOwned=" + serverOwned + ")");
@@ -502,11 +546,30 @@ app.whenReady().then(async () => {
 
       log("loading http://127.0.0.1:" + port + "/overview");
       const loaded = await loadWithRetry("http://127.0.0.1:" + port + "/overview", 30);
-      if (!loaded) showErrorPage("Le serveur local n'a pas répondu après plusieurs tentatives. Vérifiez le fichier log puis relancez.");
+      if (!loaded) {
+        showErrorPage("Le serveur local n'a pas répondu après plusieurs tentatives. Vérifiez le fichier log puis relancez.");
+      } else {
+        setTimeout(() => {
+          try { checkUpdates(); } catch (e) { log("auto-check failed: " + e.message); }
+        }, 5000);
+      }
     } catch (err) {
       log("ERR=" + (err.stack || err.message));
       showErrorPage(err.message || "Erreur inconnue");
     }
+}
+
+app.whenReady().then(() => {
+  log("ready");
+
+  const licenseResult = checkLicenseOnStartup(app);
+  log("license check valid=" + licenseResult.valid + " reason=" + (licenseResult.reason || "none"));
+
+  if (licenseResult.valid) {
+    launchMainApp();
+  } else {
+    createActivationWindow();
+  }
 });
 
 app.on("window-all-closed", () => {

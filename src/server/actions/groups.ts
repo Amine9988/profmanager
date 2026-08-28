@@ -7,8 +7,9 @@ import { getT } from "@/lib/i18n";
 import { randomUUID } from "crypto";
 import { toCamelArray, toCamelCase } from "@/lib/db";
 import type { ActionResult } from "./students";
-import { generateGroupSessions } from "./sessions";
+import { generateGroupSessions, getSchoolYearSettings } from "./sessions";
 import { checkRoomConflictsForSlots, checkRoomConflict } from "@/lib/room-conflict";
+import { parseSlotsFromFormData, toSqlDate } from "@/lib/group-form";
 
 export async function getRooms() {
   try {
@@ -25,13 +26,18 @@ export async function getRooms() {
 }
 
 export async function getGroups() {
+  const t0 = Date.now();
   const { tenantId, supabase } = await getTenantContext();
+  const t1 = Date.now();
 
     const { data: groups } = await supabase
       .from("groups")
-      .select("*, subjects(*), teachers(id, firstName, lastName), group_students(*), schedule_slots(*)")
+      .select("id, name, level, maxCapacity, status, pricePerSession, priceType, roomId, color, expiresAt, teacherId, subjectId, subjects(id, name), teachers(id, firstName, lastName), group_students(id, status)")
       .eq("tenantId", tenantId)
-      .order("createdAt", { ascending: false });
+      .order("createdAt", { ascending: false })
+      .limit(100);
+  const t2 = Date.now();
+  console.log(`[perf] getGroups: getTenantContext ${t1-t0}ms, query ${t2-t1}ms, total ${Date.now()-t0}ms, rows=${groups?.length||0}`);
 
   const groupsData = toCamelArray(groups || []).map((g: any) => ({
     ...g,
@@ -39,9 +45,24 @@ export async function getGroups() {
     teacher: g.teachers,
     room: null,
     roomId: g.roomId ?? null,
+    expiresAt: g.expiresAt ?? null,
     groupStudents: ((g.groupStudents || []) as any[]).filter((gs: any) => gs.status === "active"),
     scheduleSlots: g.scheduleSlots || [],
   }));
+  // Attach schedule slots for the card count + edit dialog prefill (list view)
+  if (groupsData.length > 0) {
+    const groupIds = groupsData.map((g: any) => g.id);
+    const { data: slots } = await supabase.from("schedule_slots").select("*").in("groupId", groupIds).eq("tenantId", tenantId);
+    const slotMap = new Map<string, any[]>();
+    for (const s of toCamelArray(slots || [])) {
+      const arr = slotMap.get(s.groupId) || [];
+      arr.push(s);
+      slotMap.set(s.groupId, arr);
+    }
+    for (const g of groupsData) {
+      g.scheduleSlots = slotMap.get(g.id) || [];
+    }
+  }
   const missingTeacherIds = [...new Set(groupsData.filter((g: any) => !g.teacher && g.teacherId).map((g: any) => g.teacherId))] as string[];
   if (missingTeacherIds.length > 0) {
     const { supabase } = await getTenantContext();
@@ -147,25 +168,33 @@ export async function createGroup(_prevState: ActionResult, formData: FormData):
       teacherId: formData.get("teacherId") || null,
       roomId: formData.get("roomId") || null,
       color: formData.get("color") || null,
+      expiresAt: formData.get("expiresAt") || null,
     });
 
     if (!parsed.success) {
       return { error: parsed.error.issues[0]?.message ?? t("errors.invalid_data") };
     }
 
-    // Build slots to check for conflicts
-    const slotCount = parseInt((formData.get("slotCount") as string) || "0", 10);
-    const slotsToInsert: Record<string, unknown>[] = [];
-    const slotsToCheck: { dayOfWeek: number; startTime: string; endTime: string }[] = [];
-    for (let i = 0; i < slotCount; i++) {
-      const dayOfWeek = formData.get(`slot_day_${i}`);
-      const startTime = formData.get(`slot_start_${i}`);
-      const endTime = formData.get(`slot_end_${i}`);
-      if (dayOfWeek && startTime && endTime) {
-        const slot = { dayOfWeek: parseInt(dayOfWeek as string, 10), startTime: startTime as string, endTime: endTime as string };
-        slotsToCheck.push(slot);
+    // Robust expiry resolution: accept both expiresAt and legacy expiresAtField,
+    // trim whitespace, and treat missing useExpiresAt as "1" when a date is present.
+    const rawUse = formData.get("useExpiresAt");
+    const rawExpires = (formData.get("expiresAt") ?? formData.get("expiresAtField") ?? "") as string;
+    const useExpiresAt = rawUse === "1" || (rawUse == null && String(rawExpires).trim() !== "");
+    let expiresAt: string | null = null;
+    if (useExpiresAt) {
+      expiresAt = toSqlDate(rawExpires);
+      if (!expiresAt) return { error: t("groups.expires_required") };
+    } else {
+      try {
+        const sy = await getSchoolYearSettings();
+        expiresAt = toSqlDate(sy?.schoolYearEnd);
+      } catch {
+        expiresAt = null;
       }
     }
+
+    const { slots: slotsToCheck, incomplete } = parseSlotsFromFormData(formData);
+    if (incomplete) return { error: t("groups.slot_times_required") };
 
     // Validate room conflicts before creating
     if (parsed.data.roomId && slotsToCheck.length > 0) {
@@ -180,7 +209,7 @@ export async function createGroup(_prevState: ActionResult, formData: FormData):
     }
 
     const now = new Date().toISOString();
-    const { data: group } = await ctx.supabase.from("groups").insert({
+    const { data: group, error: insertErr } = await ctx.supabase.from("groups").insert({
       id: randomUUID(),
       tenantId: ctx.tenantId,
       name: parsed.data.name,
@@ -194,39 +223,38 @@ export async function createGroup(_prevState: ActionResult, formData: FormData):
       teacherId: parsed.data.teacherId || null,
       roomId: parsed.data.roomId || null,
       color: parsed.data.color || null,
+      expiresAt: expiresAt || null,
       createdAt: now,
       updatedAt: now,
     }).select().single();
 
-    // Create schedule slots from form
-    for (let i = 0; i < slotCount; i++) {
-      const dayOfWeek = formData.get(`slot_day_${i}`);
-      const startTime = formData.get(`slot_start_${i}`);
-      const endTime = formData.get(`slot_end_${i}`);
-      if (dayOfWeek && startTime && endTime) {
-        slotsToInsert.push({
-          id: randomUUID(),
-          tenantId: ctx.tenantId,
-          groupId: group!.id,
-          dayOfWeek: parseInt(dayOfWeek as string, 10),
-          startTime,
-          endTime,
-        });
-      }
+    if (insertErr || !group) {
+      return { error: insertErr?.message ?? t("common.error") };
     }
-    if (slotsToInsert.length > 0) {
-      await ctx.supabase.from("schedule_slots").insert(slotsToInsert);
+
+    if (slotsToCheck.length > 0) {
+      const slotsToInsert = slotsToCheck.map((slot) => ({
+        id: randomUUID(),
+        tenantId: ctx.tenantId,
+        groupId: group.id,
+        dayOfWeek: slot.dayOfWeek,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        createdAt: now,
+      }));
+      const { error: slotErr } = await ctx.supabase.from("schedule_slots").insert(slotsToInsert);
+      if (slotErr) return { error: slotErr.message };
     }
 
     await createAuditLog({
       tenantId: ctx.tenantId, userId: ctx.userId,
-      action: "group.created", entityType: "group", entityId: group!.id,
+      action: "group.created", entityType: "group", entityId: group.id,
       metadata: { name: parsed.data.name },
     });
 
     revalidateFullApp();
-    await generateGroupSessions(group!.id);
-    return { success: true, id: group!.id };
+    try { await generateGroupSessions(group.id); } catch {}
+    return { success: true, id: group.id };
   } catch (e) {
     if (e instanceof AuthError) return { error: e.message };
     return { error: t("common.error") };
@@ -301,18 +329,38 @@ export async function generateSessions(groupId: string, weeksAhead = 8): Promise
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const now = new Date().toISOString();
+    const expiresAt = (group as any).expiresAt ? new Date((group as any).expiresAt) : null;
+    if (expiresAt) expiresAt.setHours(23, 59, 59, 999);
+
+    // Idempotency guard: never create a session that already exists for the
+    // same slot on the same date (repeated invocations must be safe).
+    const { data: existingSessions } = await ctx.supabase
+      .from("sessions")
+      .select("sessionDate, scheduleSlotId, status")
+      .eq("groupId", groupId)
+      .eq("tenantId", ctx.tenantId);
+    const existingKeys = new Set<string>();
+    const preserved = new Set<string>();
+    for (const ex of existingSessions || []) {
+      existingKeys.add(`${ex.sessionDate}|${ex.scheduleSlotId}`);
+      if (ex.status === "completed" || ex.status === "cancelled") preserved.add(`${ex.sessionDate}|${ex.scheduleSlotId}`);
+    }
 
     for (const slot of (group.scheduleSlots || group.schedule_slots || []) as any[]) {
       for (let week = 0; week < weeksAhead; week++) {
         const date = new Date(today);
         const dayDiff = (slot.dayOfWeek - date.getDay() + 7) % 7;
         date.setDate(date.getDate() + dayDiff + week * 7);
+        if (expiresAt && date > expiresAt) continue;
+        const sessionDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+        const key = `${sessionDate}|${slot.id}`;
+        if (existingKeys.has(key) || preserved.has(key)) continue;
         sessionsToCreate.push({
           id: randomUUID(),
           tenantId: ctx.tenantId,
           groupId: groupId,
           scheduleSlotId: slot.id,
-          sessionDate: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`,
+          sessionDate: sessionDate,
           startTime: slot.startTime,
           endTime: slot.endTime,
           status: "scheduled",
@@ -335,10 +383,11 @@ export async function generateSessions(groupId: string, weeksAhead = 8): Promise
   }
 }
 
-export async function enrollStudent(groupId: string, studentId: string): Promise<ActionResult> {
+export async function enrollStudent(groupId: string, studentId: string, clientType: string = "institution"): Promise<ActionResult> {
   const t = await getT();
   try {
     const ctx = await requirePermission("groups.update");
+    const type = clientType === "teacher" ? "teacher" : "institution";
 
     const [{ data: group }, { data: student }] = await Promise.all([
       ctx.supabase.from("groups").select("id").eq("id", groupId).eq("tenantId", ctx.tenantId).single(),
@@ -348,7 +397,7 @@ export async function enrollStudent(groupId: string, studentId: string): Promise
 
     const { data: existing } = await ctx.supabase.from("group_students").select("id").eq("groupId", groupId).eq("studentId", studentId).maybeSingle();
     if (existing) {
-      await ctx.supabase.from("group_students").update({ status: "active" }).eq("id", existing.id);
+      await ctx.supabase.from("group_students").update({ status: "active", clientType: type }).eq("id", existing.id);
     } else {
       await ctx.supabase.from("group_students").insert({
         id: randomUUID(),
@@ -356,6 +405,7 @@ export async function enrollStudent(groupId: string, studentId: string): Promise
         groupId: groupId,
         studentId: studentId,
         status: "active",
+        clientType: type,
         enrolledAt: new Date().toISOString(),
       });
     }
@@ -365,6 +415,29 @@ export async function enrollStudent(groupId: string, studentId: string): Promise
       action: "group.student_enrolled", entityType: "group", entityId: groupId,
       metadata: { studentId },
     });
+
+    revalidateFullApp();
+    return { success: true };
+  } catch (e) {
+    if (e instanceof AuthError) return { error: e.message };
+    return { error: t("common.error") };
+  }
+}
+
+export async function updateEnrollmentClientType(groupId: string, studentId: string, clientType: string): Promise<ActionResult> {
+  const t = await getT();
+  try {
+    const ctx = await requirePermission("groups.update");
+    const type = clientType === "teacher" ? "teacher" : "institution";
+
+    const { data } = await ctx.supabase
+      .from("group_students")
+      .update({ clientType: type })
+      .eq("groupId", groupId)
+      .eq("studentId", studentId)
+      .eq("tenantId", ctx.tenantId)
+      .select();
+    if (!data || data.length === 0) return { error: t("errors.enrollment_not_found") };
 
     revalidateFullApp();
     return { success: true };
@@ -486,24 +559,50 @@ export async function updateGroup(_prevState: ActionResult, formData: FormData):
       teacherId: formData.get("teacherId") || null,
       roomId: formData.get("roomId") || null,
       color: formData.get("color") || null,
+      expiresAt: formData.get("expiresAt") || null,
     });
 
     if (!parsed.success) {
       return { error: parsed.error.issues[0]?.message ?? t("errors.invalid_data") };
     }
 
-    // If room changed, check existing slots for conflicts
+    const rawUse2 = formData.get("useExpiresAt");
+    const rawExpires2 = (formData.get("expiresAt") ?? formData.get("expiresAtField") ?? "") as string;
+    const useExpiresAt = rawUse2 === "1" || (rawUse2 == null && String(rawExpires2).trim() !== "");
+    let expiresAt: string | null = null;
+    if (useExpiresAt) {
+      expiresAt = toSqlDate(rawExpires2);
+      if (!expiresAt) return { error: t("groups.expires_required") };
+    } else {
+      try {
+        const sy = await getSchoolYearSettings();
+        expiresAt = toSqlDate(sy?.schoolYearEnd);
+      } catch {
+        expiresAt = null;
+      }
+    }
+
+    // Validate slots BEFORE mutating the group – prevents partial update that
+    // left the name/price saved but schedule rejected (the “as if not entered” bug).
+    const { slots: submittedSlotsEarly, incomplete: incompleteEarly } = parseSlotsFromFormData(formData);
+    if (incompleteEarly) return { error: t("groups.slot_times_required") };
+
+    // If room changed, check existing slots for conflicts (use submitted if present, else stored)
     if (parsed.data.roomId && parsed.data.roomId !== existing.roomId) {
-      const { data: slots } = await ctx.supabase
-        .from("schedule_slots")
-        .select("dayOfWeek, startTime, endTime")
-        .eq("groupId", groupId)
-        .eq("tenantId", ctx.tenantId);
-      if (slots && slots.length > 0) {
+      let slotsForConflict: any[] = submittedSlotsEarly as any[];
+      if (slotsForConflict.length === 0) {
+        const { data: slots } = await ctx.supabase
+          .from("schedule_slots")
+          .select("dayOfWeek, startTime, endTime")
+          .eq("groupId", groupId)
+          .eq("tenantId", ctx.tenantId);
+        slotsForConflict = (slots as any[]) || [];
+      }
+      if (slotsForConflict.length > 0) {
         const conflict = await checkRoomConflictsForSlots(ctx.supabase, {
           tenantId: ctx.tenantId,
           roomId: parsed.data.roomId,
-          slots: slots as any[],
+          slots: slotsForConflict as any[],
           excludeGroupId: groupId,
         });
         if (conflict) {
@@ -512,7 +611,7 @@ export async function updateGroup(_prevState: ActionResult, formData: FormData):
       }
     }
 
-    await ctx.supabase.from("groups").update({
+    const { error: updateErr } = await ctx.supabase.from("groups").update({
       name: parsed.data.name,
       subjectId: parsed.data.subjectId,
       level: parsed.data.level,
@@ -523,7 +622,9 @@ export async function updateGroup(_prevState: ActionResult, formData: FormData):
       teacherId: parsed.data.teacherId || null,
       roomId: parsed.data.roomId || null,
       color: parsed.data.color || null,
+      expiresAt: expiresAt || null,
     }).eq("id", groupId);
+    if (updateErr) return { error: updateErr.message };
 
     await createAuditLog({
       tenantId: ctx.tenantId, userId: ctx.userId,
@@ -533,23 +634,11 @@ export async function updateGroup(_prevState: ActionResult, formData: FormData):
     // ------------------------------------------------------------------
     // Schedule slots: submitted rows replace the current set. Rows carry an
     // optional slot id (existing) — new rows have none. Missing existing ids
-    // means the slot was removed by the user.
+    // means the slot was removed by the user. Reuse the already-validated
+    // early parse so we never return an error AFTER the group was mutated.
     // ------------------------------------------------------------------
-    const slotCount = parseInt((formData.get("slotCount") as string) || "0", 10);
-    const submittedSlots: { id: string | undefined; dayOfWeek: number; startTime: string; endTime: string }[] = [];
-    for (let i = 0; i < slotCount; i++) {
-      const dayOfWeek = formData.get(`slot_day_${i}`);
-      const startTime = formData.get(`slot_start_${i}`);
-      const endTime = formData.get(`slot_end_${i}`);
-      if (dayOfWeek && startTime && endTime) {
-        submittedSlots.push({
-          id: (formData.get(`slot_id_${i}`) as string) || undefined,
-          dayOfWeek: parseInt(dayOfWeek as string, 10),
-          startTime: startTime as string,
-          endTime: endTime as string,
-        });
-      }
-    }
+    const submittedSlots = submittedSlotsEarly;
+    // (incompleteEarly already checked before the group update)
 
     const { data: existingSlots } = await ctx.supabase
       .from("schedule_slots")
@@ -582,17 +671,22 @@ export async function updateGroup(_prevState: ActionResult, formData: FormData):
           dayOfWeek: slot.dayOfWeek,
           startTime: slot.startTime,
           endTime: slot.endTime,
+          createdAt: new Date().toISOString(),
         });
       }
     }
 
     // Rebuild future sessions from the new schedule whenever the schedule
     // changed relative to what was stored.
-    if (submittedSlots.length === 0 && existingSlotIds.size > 0) {
-      // All slots were removed: drop leftover scheduled sessions.
-      await ctx.supabase.from("sessions").delete().eq("groupId", groupId).eq("tenantId", ctx.tenantId).eq("status", "scheduled");
-    } else if (submittedSlots.length > 0 || existingSlotIds.size > 0) {
-      await generateGroupSessions(groupId);
+    try {
+      if (submittedSlots.length === 0 && existingSlotIds.size > 0) {
+        // All slots were removed: drop leftover scheduled sessions.
+        await ctx.supabase.from("sessions").delete().eq("groupId", groupId).eq("tenantId", ctx.tenantId).eq("status", "scheduled");
+      } else if (submittedSlots.length > 0 || existingSlotIds.size > 0) {
+        await generateGroupSessions(groupId);
+      }
+    } catch {
+      // Session regeneration is best-effort; group + slots already saved.
     }
 
     revalidateFullApp();

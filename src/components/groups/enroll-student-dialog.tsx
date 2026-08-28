@@ -20,11 +20,9 @@ type Student = { id: string; fullName: string; gradeLevel?: string | null };
 
 export function EnrollStudentDialog({
   groupId,
-  level,
   availableStudents,
 }: {
   groupId: string;
-  level: string | null;
   availableStudents: Student[];
 }) {
   const t = useT();
@@ -34,7 +32,6 @@ export function EnrollStudentDialog({
   const [isPending, startTransition] = useTransition();
 
   const filtered = availableStudents.filter((s) =>
-    (!level || String(s.gradeLevel ?? "") === String(level)) &&
     s.fullName.toLowerCase().includes(search.toLowerCase())
   );
 
