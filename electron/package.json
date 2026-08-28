@@ -32,7 +32,6 @@
       "en-US",
       "en-GB"
     ],
-    "electronDist": "node_modules/electron/dist",
     "files": [
       "main.js",
       "preload.js",
@@ -82,7 +81,7 @@
           "arch": ["x64", "arm64"]
         }
       ],
-      "icon": "public/icon.png",
+      "icon": "public/icon.icns",
       "category": "public.app-category.education",
       "hardenedRuntime": false,
       "gatekeeperAssess": false,
