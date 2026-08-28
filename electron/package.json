@@ -1,6 +1,6 @@
 {
   "name": "profmanager-desktop",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "description": "ProfManager — Gestion de cours particuliers",
   "main": "main.js",
   "scripts": {
