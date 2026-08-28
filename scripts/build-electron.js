@@ -36,9 +36,7 @@ for (const dir of STALE_DEV) {
     console.log(`  removed stale ${dir}/ (from a previous dev server)`);
   }
 }
-const NEXT_BUILD_CMD = fs.existsSync(path.join(ROOT, "node_modules", "next", "dist", "bin", "next.js"))
-  ? "node node_modules\\next\\dist\\bin\\next.js build"
-  : "node node_modules\\next\\dist\\bin\\next build";
+const NEXT_BUILD_CMD = "npx next build";
 run(NEXT_BUILD_CMD, ROOT);
 
 // Step 2: Remove project-root junctions from standalone .next/node_modules before copy
