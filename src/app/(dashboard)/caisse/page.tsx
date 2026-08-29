@@ -59,6 +59,9 @@ export default function CaissePage() {
   const [showPinDialog, setShowPinDialog] = useState(false);
   const [pinValue, setPinValue] = useState("");
   const [pinError, setPinError] = useState(false);
+  const [showResetDialog, setShowResetDialog] = useState(false);
+  const [resetInput, setResetInput] = useState("");
+  const [resetError, setResetError] = useState(false);
 
   const handleReveal = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -356,14 +359,7 @@ export default function CaissePage() {
             <button
               type="button"
               className="text-xs text-primary underline"
-              onClick={async () => {
-                const input = prompt(t("settings.password_enter_default") || "أدخل كلمة المرور الافتراضية profmanager1234 للتأكيد:");
-                if (input === null) return;
-                if (input !== "profmanager1234") { toast.error(t("caisse.wrong_password")); return; }
-                if (!confirm(t("settings.password_reset_confirm"))) return;
-                const r = await fetch("/api/auth/reset-password", { method: "POST" });
-                if (r.ok) { toast.success(t("settings.password_reset_success")); setPinValue(""); setPinError(false); } else toast.error(t("common.error"));
-              }}
+              onClick={() => { setResetInput(""); setResetError(false); setShowResetDialog(true); }}
             >
               {t("settings.password_forgot")}
             </button>
@@ -374,6 +370,27 @@ export default function CaissePage() {
               <Button type="submit"><Eye className="size-4 mr-1" /> {t("caisse.reveal")}</Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t("settings.password_forgot") || "إعادة كلمة المرور"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">{t("settings.password_enter_default") || "أدخل كلمة المرور الافتراضية profmanager1234 للتأكيد:"}</p>
+            <Input type="password" value={resetInput} onChange={(e) => { setResetInput(e.target.value); setResetError(false); }} placeholder="profmanager1234" autoFocus />
+            {resetError && <p className="text-sm text-destructive">{t("caisse.wrong_password") || "كلمة المرور غير صحيحة"}</p>}
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button type="button" variant="outline" onClick={() => { setShowResetDialog(false); setResetInput(""); setResetError(false); }}>{t("common.cancel")}</Button>
+            <Button type="button" variant="destructive" onClick={async () => {
+              if (resetInput !== "profmanager1234") { setResetError(true); toast.error(t("caisse.wrong_password") || "كلمة المرور غير صحيحة"); return; }
+              if (!confirm(t("settings.password_reset_confirm") || "هل أنت متأكد من إعادة كلمة المرور إلى الافتراضية profmanager1234؟")) return;
+              const r = await fetch("/api/auth/reset-password", { method: "POST" });
+              if (r.ok) { toast.success(t("settings.password_reset_success") || "تمت إعادة كلمة المرور إلى profmanager1234"); setShowResetDialog(false); setResetInput(""); setPinValue(""); setPinError(false); } else toast.error(t("common.error"));
+            }}>{t("common.confirm") || "تأكيد"}</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

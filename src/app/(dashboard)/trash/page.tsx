@@ -30,6 +30,9 @@ export default function TrashPage() {
   const [passwordDialog, setPasswordDialog] = useState<"permanentDelete" | "emptyTrash" | null>(null);
   const [password, setPassword] = useState("");
   const [verifying, setVerifying] = useState(false);
+  const [showResetDialog, setShowResetDialog] = useState(false);
+  const [resetInput, setResetInput] = useState("");
+  const [resetError, setResetError] = useState(false);
 
   const fetchTrash = useCallback(async () => {
     try {
@@ -278,14 +281,7 @@ export default function TrashPage() {
           <button
             type="button"
             className="text-xs text-primary underline text-right"
-            onClick={async () => {
-              const input = prompt(t("settings.password_enter_default") || "أدخل كلمة المرور الافتراضية profmanager1234 للتأكيد:");
-              if (input === null) return;
-              if (input !== "profmanager1234") { toast.error(t("caisse.wrong_password")); return; }
-              if (!confirm(t("settings.password_reset_confirm"))) return;
-              const r = await fetch("/api/auth/reset-password", { method: "POST" });
-              if (r.ok) { toast.success(t("settings.password_reset_success")); setPassword(""); } else toast.error(t("common.error"));
-            }}
+            onClick={() => { setResetInput(""); setResetError(false); setShowResetDialog(true); }}
           >
             {t("settings.password_forgot")}
           </button>
@@ -294,6 +290,27 @@ export default function TrashPage() {
             <Button variant="destructive" onClick={verifyPasswordAndProceed} disabled={verifying || !password.trim()}>
               {verifying ? "..." : t("trash.confirm")}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t("settings.password_forgot") || "إعادة كلمة المرور"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">{t("settings.password_enter_default") || "أدخل كلمة المرور الافتراضية profmanager1234 للتأكيد:"}</p>
+            <Input type="password" value={resetInput} onChange={(e) => { setResetInput(e.target.value); setResetError(false); }} placeholder="profmanager1234" autoFocus />
+            {resetError && <p className="text-sm text-destructive">{t("caisse.wrong_password") || "كلمة المرور غير صحيحة"}</p>}
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button type="button" variant="outline" onClick={() => { setShowResetDialog(false); setResetInput(""); setResetError(false); }}>{t("common.cancel")}</Button>
+            <Button type="button" variant="destructive" onClick={async () => {
+              if (resetInput !== "profmanager1234") { setResetError(true); toast.error(t("caisse.wrong_password") || "كلمة المرور غير صحيحة"); return; }
+              if (!confirm(t("settings.password_reset_confirm") || "هل أنت متأكد من إعادة كلمة المرور إلى الافتراضية profmanager1234؟")) return;
+              const r = await fetch("/api/auth/reset-password", { method: "POST" });
+              if (r.ok) { toast.success(t("settings.password_reset_success") || "تمت إعادة كلمة المرور إلى profmanager1234"); setShowResetDialog(false); setResetInput(""); setPassword(""); } else toast.error(t("common.error"));
+            }}>{t("common.confirm") || "تأكيد"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

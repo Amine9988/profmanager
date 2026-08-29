@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Lock, Eye, EyeOff, Check } from "lucide-react";
 import { toast } from "sonner";
 
@@ -18,6 +19,9 @@ export function ChangePasswordCard() {
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showResetDialog, setShowResetDialog] = useState(false);
+  const [resetInput, setResetInput] = useState("");
+  const [resetError, setResetError] = useState(false);
 
   async function handleSubmit() {
     if (!currentPassword || !newPassword) {
@@ -126,21 +130,51 @@ export function ChangePasswordCard() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={async () => {
-              const input = prompt(t("settings.password_enter_default") || "أدخل كلمة المرور الافتراضية profmanager1234 للتأكيد:");
-              if (input === null) return;
-              if (input !== "profmanager1234") { toast.error(t("caisse.wrong_password") || "كلمة المرور غير صحيحة"); return; }
-              if (!confirm(t("settings.password_reset_confirm") || "هل أنت متأكد من إعادة كلمة المرور إلى الافتراضية profmanager1234؟")) return;
-              const res = await fetch("/api/auth/reset-password", { method: "POST" });
-              if (res.ok) {
-                toast.success(t("settings.password_reset_success") || "تمت إعادة كلمة المرور إلى profmanager1234");
-              } else toast.error(t("common.error"));
-            }}
+            onClick={() => { setResetInput(""); setResetError(false); setShowResetDialog(true); }}
           >
             {t("settings.password_forgot") || "نسيت كلمة المرور؟ إعادة إلى الافتراضية"}
           </Button>
         </div>
       </CardContent>
+      <Dialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t("settings.password_forgot") || "إعادة كلمة المرور"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">{t("settings.password_enter_default") || "أدخل كلمة المرور الافتراضية profmanager1234 للتأكيد:"}</p>
+            <Input
+              type="password"
+              value={resetInput}
+              onChange={(e) => { setResetInput(e.target.value); setResetError(false); }}
+              placeholder="profmanager1234"
+              autoFocus
+            />
+            {resetError && <p className="text-sm text-destructive">{t("caisse.wrong_password") || "كلمة المرور غير صحيحة"}</p>}
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button type="button" variant="outline" onClick={() => { setShowResetDialog(false); setResetInput(""); setResetError(false); }}>
+              {t("common.cancel")}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={async () => {
+                if (resetInput !== "profmanager1234") { setResetError(true); toast.error(t("caisse.wrong_password") || "كلمة المرور غير صحيحة"); return; }
+                if (!confirm(t("settings.password_reset_confirm") || "هل أنت متأكد من إعادة كلمة المرور إلى الافتراضية profmanager1234؟")) return;
+                const res = await fetch("/api/auth/reset-password", { method: "POST" });
+                if (res.ok) {
+                  toast.success(t("settings.password_reset_success") || "تمت إعادة كلمة المرور إلى profmanager1234");
+                  setShowResetDialog(false);
+                  setResetInput("");
+                } else toast.error(t("common.error"));
+              }}
+            >
+              {t("common.confirm") || "تأكيد"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
