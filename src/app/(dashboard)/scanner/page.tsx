@@ -180,6 +180,7 @@ export default function ScannerPage() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (typeof window !== "undefined" && window.location.pathname !== "/scanner") return;
       setKeyEcho(e.code + " / " + (typeof e.key === "string" && e.key.length === 1 ? e.key : "<" + e.key + ">"));
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
@@ -188,7 +189,7 @@ export default function ScannerPage() {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
       if (e.key === "Enter" || e.code === "NumpadEnter") {
-        e.preventDefault();
+        if (bufRef.current) e.preventDefault();
         submitBuffer();
         return;
       }
@@ -202,7 +203,7 @@ export default function ScannerPage() {
       bufRef.current += ch;
       lastTsRef.current = now;
       setBuffer(bufRef.current);
-      e.preventDefault();
+      if (bufRef.current) e.preventDefault();
 
       if (quietTimerRef.current) clearTimeout(quietTimerRef.current);
       quietTimerRef.current = setTimeout(submitBuffer, 300);
@@ -257,12 +258,18 @@ export default function ScannerPage() {
   }, [processScan]);
 
   useEffect(() => {
+    if (typeof window !== "undefined" && window.location.pathname !== "/scanner") return;
     const t1 = setTimeout(() => {
-      window.focus();
-      document.body.focus({ preventScroll: true });
+      const ae = document.activeElement as HTMLElement | null;
+      if (!ae || (ae.tagName !== "INPUT" && ae.tagName !== "TEXTAREA" && !ae.isContentEditable)) {
+        window.focus();
+      }
     }, 300);
     const poll = setInterval(() => setFocused(document.hasFocus()), 1000);
-    const onMouse = () => {
+    const onMouse = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      if (window.location.pathname !== "/scanner") return;
       window.focus();
       setFocused(true);
     };

@@ -374,7 +374,7 @@ function setupTray(port) {
   const menu = Menu.buildFromTemplate([
     {
       label: "فتح ProfManager",
-      click: () => { mainWindow.show(); mainWindow.focus(); },
+      click: () => { mainWindow.show(); mainWindow.focus(); if (mainWindow.webContents) mainWindow.webContents.focus(); },
     },
     { type: "separator" },
     {
@@ -383,7 +383,7 @@ function setupTray(port) {
     },
   ]);
   tray.setContextMenu(menu);
-  tray.on("double-click", () => { mainWindow.show(); mainWindow.focus(); });
+  tray.on("double-click", () => { mainWindow.show(); mainWindow.focus(); if (mainWindow.webContents) mainWindow.webContents.focus(); });
 }
 
 function showErrorPage(detail) {
@@ -515,6 +515,8 @@ async function launchMainApp() {
       killServer();
     }
   });
+  mainWindow.on("show", () => { try { if (mainWindow.webContents) mainWindow.webContents.focus(); } catch {} });
+  mainWindow.on("focus", () => { try { if (mainWindow.webContents) mainWindow.webContents.focus(); } catch {} });
 
   // Show the window immediately with a styled loading page, then load the
     // real app once the (possibly slow cold-starting) server is ready.

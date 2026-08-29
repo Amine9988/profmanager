@@ -55,7 +55,6 @@ function DialogContent({
       )}
         {...props}
         onCloseAutoFocus={(e) => {
-          e.preventDefault();
           onCloseAutoFocus?.(e);
         }}
       >

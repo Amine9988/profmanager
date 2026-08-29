@@ -57,7 +57,6 @@ function SelectContent({
         position={position}
         {...props}
         onCloseAutoFocus={(e) => {
-          e.preventDefault();
           onCloseAutoFocus?.(e);
         }}
       >

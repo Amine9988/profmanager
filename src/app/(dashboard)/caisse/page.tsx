@@ -149,11 +149,14 @@ export default function CaissePage() {
 
   async function handlePrintCaisseInvoice(m: CashMovement) {
     setPrinting(true);
+    let container: HTMLDivElement | null = null;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
     try {
-      const container = document.createElement("div");
-      container.style.cssText = "position:fixed;left:-9999px;top:0;z-index:-1;";
+      container = document.createElement("div");
+      container.style.cssText = "position:fixed;left:-9999px;top:0;z-index:-1;pointer-events:none;";
       container.innerHTML = buildCaisseInvoiceHtml(m, 0);
       document.body.appendChild(container);
+      fallbackTimer = setTimeout(() => container?.remove(), 5000);
       await new Promise((r) => setTimeout(r, 300));
       const el = document.getElementById("caisse-inv-0");
       if (!el) { toast.error("خطأ في إنشاء الفاتورة"); return; }
@@ -170,7 +173,9 @@ export default function CaissePage() {
       console.error("Caisse invoice PDF error:", e);
       toast.error("فشل إنشاء الفاتورة");
     } finally {
-      document.getElementById("caisse-inv-0")?.parentElement?.remove();
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      if (container && container.parentElement) container.remove();
+      else document.getElementById("caisse-inv-0")?.parentElement?.remove();
       setPrinting(false);
     }
   }

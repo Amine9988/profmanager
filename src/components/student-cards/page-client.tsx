@@ -103,8 +103,8 @@ export function StudentCardsClient({ students, tenant, levels }: StudentCardsCli
 
       <div
         id="sc-print-root"
-        aria-hidden="true"
         className="pointer-events-none"
+        aria-hidden="false"
         style={{ position: "fixed", left: -10000, top: 0, zIndex: -1 }}
       >
         {selectedStudents.map((s) => (

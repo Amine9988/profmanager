@@ -104,16 +104,19 @@ export function AttendanceBrowser({
   async function handlePrint(session: SessionSummary) {
     const id = session.id;
     setPrintingId(id);
+    let container: HTMLDivElement | null = null;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
     try {
       const res = await fetch(`/api/attendance/session/${id}`);
       if (!res.ok) { toast.error(t("common.error")); return; }
       const data = await res.json();
       const roster: { student: { fullName: string }; attendance: { status: string | null } | null }[] = data.roster || [];
       const roomName = data.session?.group?.roomId ? roomById[data.session.group.roomId] ?? null : null;
-      const container = document.createElement("div");
-      container.style.cssText = "position:fixed;left:-9999px;top:0;z-index:-1;";
+      container = document.createElement("div");
+      container.style.cssText = "position:fixed;left:-9999px;top:0;z-index:-1;pointer-events:none;";
       container.innerHTML = buildAttendanceHtml(session, roster, roomName);
       document.body.appendChild(container);
+      fallbackTimer = setTimeout(() => container?.remove(), 5000);
       await new Promise((r) => setTimeout(r, 300));
       const el = document.getElementById("att-print");
       if (!el) { toast.error(t("common.error")); return; }
@@ -130,7 +133,9 @@ export function AttendanceBrowser({
       console.error("attendance print error", e);
       toast.error(t("common.error"));
     } finally {
-      document.getElementById("att-print")?.parentElement?.remove();
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      if (container && container.parentElement) container.remove();
+      else document.getElementById("att-print")?.parentElement?.remove();
       setPrintingId(null);
     }
   }

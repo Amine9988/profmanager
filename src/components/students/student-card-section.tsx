@@ -87,10 +87,13 @@ body{display:flex;align-items:center;justify-content:center;min-height:100vh;bac
     const elId = "pdf-card-" + safeId;
     const bcId = "bc-" + safeId;
 
+    let container: HTMLDivElement | null = null;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
     try {
-      const container = document.createElement("div");
+      container = document.createElement("div");
       container.id = elId;
-      container.style.cssText = "position:fixed;left:0;top:0;z-index:10000;width:324px;height:204px;background:#fff;direction:rtl;overflow:hidden;opacity:0.01;pointer-events:none";
+      container.style.cssText = "position:fixed;left:-10000px;top:0;z-index:-1;width:324px;height:204px;background:#fff;direction:rtl;overflow:hidden;pointer-events:none";
+      fallbackTimer = setTimeout(() => container?.remove(), 5000);
       container.innerHTML = `
         <div style="padding:9.5px;display:flex;flex-direction:column;height:100%;box-sizing:border-box;font-family:system-ui,sans-serif;font-size:6px">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:7.5px">
@@ -141,8 +144,12 @@ body{display:flex;align-items:center;justify-content:center;min-height:100vh;bac
     } catch (e: any) {
       console.error("PDF export error:", e);
     } finally {
-      const el = document.getElementById(elId);
-      if (el) el.remove();
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      if (container && container.parentElement) container.remove();
+      else {
+        const el = document.getElementById(elId);
+        if (el) el.remove();
+      }
     }
   }
 

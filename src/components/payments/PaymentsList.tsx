@@ -605,12 +605,15 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
 
   async function handlePrintInvoice(p: Payment) {
     setPrinting(true);
+    let container: HTMLDivElement | null = null;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
     try {
       // Render HTML to a hidden container
-      const container = document.createElement("div");
-      container.style.cssText = "position:fixed;left:-9999px;top:0;z-index:-1;";
+      container = document.createElement("div");
+      container.style.cssText = "position:fixed;left:-9999px;top:0;z-index:-1;pointer-events:none;";
       container.innerHTML = buildInvoiceHtml(p, 0);
       document.body.appendChild(container);
+      fallbackTimer = setTimeout(() => container?.remove(), 5000);
       await new Promise((r) => setTimeout(r, 300));
       const el = document.getElementById("inv-0");
       if (!el) { toast.error("خطأ في إنشاء الفاتورة"); return; }
@@ -627,21 +630,32 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
       console.error("Invoice PDF error:", e);
       toast.error("فشل إنشاء الفاتورة");
     } finally {
-      const c = document.getElementById("inv-0")?.parentElement;
-      c?.remove();
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      if (container && container.parentElement) container.remove();
+      else {
+        const c = document.getElementById("inv-0")?.parentElement;
+        c?.remove();
+      }
       setPrinting(false);
     }
   }
 
+  function getPaymentKey(p: Payment): string {
+    return p.id ?? `${p.studentId}-${p.month}`;
+  }
+
   async function handlePrintSelectedInvoices() {
-    const selected = filteredPayments.filter((p) => selectedIds.has(p.studentId));
+    const selected = filteredPayments.filter((p) => selectedIds.has(getPaymentKey(p)));
     if (selected.length === 0) return;
     setPrinting(true);
+    let container: HTMLDivElement | null = null;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
     try {
-      const container = document.createElement("div");
-      container.style.cssText = "position:fixed;left:-9999px;top:0;z-index:-1;";
+      container = document.createElement("div");
+      container.style.cssText = "position:fixed;left:-9999px;top:0;z-index:-1;pointer-events:none;";
       container.innerHTML = selected.map((p, i) => buildInvoiceHtml(p, i)).join("");
       document.body.appendChild(container);
+      fallbackTimer = setTimeout(() => container?.remove(), 8000);
       await new Promise((r) => setTimeout(r, 400));
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a5" });
       for (let i = 0; i < selected.length; i++) {
@@ -662,7 +676,9 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
       console.error("Bulk invoice PDF error:", e);
       toast.error("فشل إنشاء الفواتير");
     } finally {
-      document.getElementById("inv-0")?.parentElement?.remove();
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      if (container && container.parentElement) container.remove();
+      else document.getElementById("inv-0")?.parentElement?.remove();
       setPrinting(false);
     }
   }
@@ -767,20 +783,23 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
     if (selectedIds.size === filteredPayments.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(filteredPayments.map((p) => p.studentId)));
+      setSelectedIds(new Set(filteredPayments.map((p) => getPaymentKey(p))));
     }
   }
 
   async function handleBulkDelete() {
-    const studentIds = Array.from(selectedIds);
-    if (studentIds.length === 0) return;
+    const selected = filteredPayments.filter((p) => selectedIds.has(getPaymentKey(p)));
+    const ids = selected.filter((p) => p.id).map((p) => p.id as string);
+    if (ids.length === 0) {
+      toast.error(t("payments.no_payments"));
+      return;
+    }
     setBulkDeletingPayment(true);
     try {
-      const monthStr = `${year}-${String(month).padStart(2, "0")}-01`;
       const res = await fetch("/api/payments/bulk-delete", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ studentIds, month: monthStr }),
+        body: JSON.stringify({ ids }),
       });
       if (res.ok) {
         toast.success(t("payments.payment_deleted"));
@@ -999,12 +1018,12 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
               {paginatedPayments.map((p, i) => {
                 const remaining = Math.max(p.amountDue - p.amountPaid, 0);
                 return (
-                    <tr key={p.id} className={`border-b ${i % 2 === 0 ? "bg-background" : "bg-muted/20"}`}>
+                    <tr key={getPaymentKey(p)} className={`border-b ${i % 2 === 0 ? "bg-background" : "bg-muted/20"}`}>
                     <td style={{ padding: "12px", textAlign: "center" }}>
                       <input
                         type="checkbox"
-                        checked={selectedIds.has(p.studentId)}
-                        onChange={() => toggleSelect(p.studentId)}
+                        checked={selectedIds.has(getPaymentKey(p))}
+                        onChange={() => toggleSelect(getPaymentKey(p))}
                         className="size-4 rounded border-gray-300 cursor-pointer"
                       />
                     </td>
