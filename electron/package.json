@@ -1,6 +1,6 @@
 {
   "name": "profmanager-desktop",
-  "version": "1.0.24",
+  "version": "1.0.25",
   "description": "ProfManager — Gestion de cours particuliers",
   "main": "main.js",
   "scripts": {
@@ -11,7 +11,8 @@
     "publish": "electron-builder --win --publish always",
     "package": "electron-builder --dir",
     "installer": "electron-builder --win --prepackaged=dist/win-unpacked",
-    "dist": "node ../scripts/build-electron.js"
+    "dist": "node ../scripts/build-electron.js",
+    "build:mac": "node ../scripts/patch-dmg-builder-windows.js && electron-builder --mac dmg --x64 --arm64 --publish never"
   },
   "author": "Slimani Amine",
   "license": "MIT",
@@ -56,7 +57,7 @@
         "to": "."
       }
     ],
-    "icon": "public/icon.ico",
+    "icon": "public/icon.icns",
     "win": {
       "target": [
         {
@@ -74,11 +75,10 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64"]
-        },
-        {
-          "target": "zip",
-          "arch": ["x64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "icon": "public/icon.icns",
@@ -86,7 +86,31 @@
       "hardenedRuntime": false,
       "gatekeeperAssess": false,
       "entitlements": null,
-      "entitlementsInherit": null
+      "entitlementsInherit": null,
+      "artifactName": "ProfManager Setup ${version}-${arch}.${ext}"
+    },
+    "dmg": {
+      "title": "ProfManager ${version}",
+      "backgroundColor": "#ecf2f8",
+      "icon": "public/icon.icns",
+      "iconSize": 80,
+      "window": {
+        "width": 540,
+        "height": 380
+      },
+      "contents": [
+        {
+          "x": 140,
+          "y": 200,
+          "type": "file"
+        },
+        {
+          "x": 400,
+          "y": 200,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -107,6 +131,7 @@
   "dependencies": {
     "electron-log": "^5.4.4",
     "electron-updater": "^6.8.9",
+    "jimp": "^0.22.12",
     "node-machine-id": "^1.1.12"
   }
 }
