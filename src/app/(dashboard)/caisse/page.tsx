@@ -45,6 +45,7 @@ export default function CaissePage() {
   const [data, setData] = useState<CaisseData | null>(null);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<string>("");
+  const [filterDay, setFilterDay] = useState<string>("");
   const [allTime, setAllTime] = useState(false);
   const [viewMonth, setViewMonth] = useState<string>(() => {
     const now = new Date();
@@ -90,19 +91,22 @@ export default function CaissePage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [y, m] = viewMonth.split("-").map(Number);
-    const firstOfMonth = `${y}-${String(m).padStart(2, "0")}-01`;
-    const lastOfMonth = `${y}-${String(m).padStart(2, "0")}-${new Date(y, m, 0).getDate()}`;
     const params = new URLSearchParams();
     if (filterType) params.set("type", filterType);
-    if (!allTime) {
+    if (filterDay) {
+      params.set("from", filterDay);
+      params.set("to", filterDay);
+    } else if (!allTime) {
+      const [y, m] = viewMonth.split("-").map(Number);
+      const firstOfMonth = `${y}-${String(m).padStart(2, "0")}-01`;
+      const lastOfMonth = `${y}-${String(m).padStart(2, "0")}-${new Date(y, m, 0).getDate()}`;
       params.set("from", firstOfMonth);
       params.set("to", lastOfMonth);
     }
     const res = await fetch(`/api/caisse?${params.toString()}`);
     if (res.ok) setData(await res.json());
     setLoading(false);
-  }, [filterType, viewMonth, allTime]);
+  }, [filterType, viewMonth, allTime, filterDay]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -180,7 +184,77 @@ export default function CaissePage() {
     }
   }
 
+  function buildDailyCaisseHtml(day: string, movements: CashMovement[], income: number, expense: number, balance: number): string {
+    const dayLabel = new Date(day).toLocaleDateString("ar-DZ", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+    const rows = movements.map((m) => {
+      const cat = (CATEGORY_KEYS[m.category] ? t(CATEGORY_KEYS[m.category]) : m.category) || "—";
+      const method = (METHOD_KEYS[m.paymentMethod] ? t(METHOD_KEYS[m.paymentMethod]) : m.paymentMethod) || "—";
+      const typeLabel = m.type === "income" ? "مدخول" : "مصروف";
+      const amountStr = (m.type === "income" ? "+" : "-") + formatCurrency(m.amount);
+      const color = m.type === "income" ? "#16a34a" : "#dc2626";
+      const desc = translateDescription(t, m.description);
+      return `<tr><td style="padding:6px 8px;text-align:right;font-size:11px;">${cat}</td><td style="padding:6px 8px;text-align:right;font-size:11px;">${desc}</td><td style="padding:6px 8px;text-align:left;font-size:11px;color:${color};font-weight:600;">${amountStr}</td><td style="padding:6px 8px;text-align:right;font-size:10px;color:#64748b;">${method}</td><td style="padding:6px 8px;text-align:right;font-size:10px;color:${color};">${typeLabel}</td></tr>`;
+    }).join("");
+    return `
+      <div id="caisse-daily" dir="rtl" style="width:650px;margin:0 auto;padding:24px;font-family:'Segoe UI',Arial,sans-serif;background:#fff;direction:rtl;text-align:right;border:1px solid #e2e8f0;border-radius:8px;">
+        <h2 style="text-align:center;font-size:18px;font-weight:700;margin:0 0 4px;color:#1e293b;">فاتورة الصندوق اليومية</h2>
+        <p style="text-align:center;font-size:12px;color:#64748b;margin:0 0 12px;">${dayLabel} — ${day}</p>
+        <hr style="border:none;border-top:1px solid #cbd5e1;margin:0 0 16px;" />
+        <table style="width:100%;font-size:12px;border-collapse:collapse;">
+          <thead><tr style="background:#f1f5f9;"><th style="padding:7px 8px;text-align:right;">الفئة</th><th style="padding:7px 8px;text-align:right;">الوصف</th><th style="padding:7px 8px;text-align:left;">المبلغ</th><th style="padding:7px 8px;text-align:right;">طريقة الدفع</th><th style="padding:7px 8px;text-align:right;">النوع</th></tr></thead>
+          <tbody>${rows || `<tr><td colspan="5" style="padding:12px;text-align:center;color:#64748b;">لا توجد حركات في هذا اليوم</td></tr>`}</tbody>
+        </table>
+        <hr style="border:none;border-top:1px solid #cbd5e1;margin:16px 0;" />
+        <table style="width:100%;font-size:13px;border-collapse:collapse;">
+          <tr><td style="padding:5px 8px;color:#475569;">إجمالي المداخيل:</td><td style="padding:5px 8px;text-align:left;font-weight:700;color:#16a34a;">+${formatCurrency(income)}</td></tr>
+          <tr><td style="padding:5px 8px;color:#475569;">إجمالي المخارج:</td><td style="padding:5px 8px;text-align:left;font-weight:700;color:#dc2626;">-${formatCurrency(expense)}</td></tr>
+          <tr style="background:#f8fafc;"><td style="padding:7px 8px;font-weight:700;">الرصيد اليومي:</td><td style="padding:7px 8px;text-align:left;font-weight:800;color:${balance >= 0 ? "#16a34a" : "#dc2626"};">${formatCurrency(balance)}</td></tr>
+          <tr><td style="padding:5px 8px;color:#475569;font-size:11px;">عدد الحركات:</td><td style="padding:5px 8px;text-align:left;font-size:11px;">${movements.length}</td></tr>
+        </table>
+        <hr style="border:none;border-top:1px solid #cbd5e1;margin:16px 0 8px;" />
+        <p style="text-align:center;font-size:11px;color:#64748b;margin:0;">شكراً لكم — ${new Date().toLocaleString("ar-DZ")}</p>
+      </div>
+    `;
+  }
+
+  async function handlePrintDaily() {
+    if (!filterDay) { toast.error("اختر يوماً أولاً"); return; }
+    if (!dailyStats || dailyStats.movements.length === 0) { toast.error("لا توجد حركات في هذا اليوم"); return; }
+    setPrinting(true);
+    let container: HTMLDivElement | null = null;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+    try {
+      container = document.createElement("div");
+      container.style.cssText = "position:fixed;left:-9999px;top:0;z-index:-1;pointer-events:none;";
+      container.innerHTML = buildDailyCaisseHtml(filterDay, dailyStats.movements, dailyStats.income, dailyStats.expense, dailyStats.balance);
+      document.body.appendChild(container);
+      fallbackTimer = setTimeout(() => container?.remove(), 8000);
+      await new Promise((r) => setTimeout(r, 300));
+      const el = document.getElementById("caisse-daily");
+      if (!el) { toast.error("خطأ في إنشاء الفاتورة"); return; }
+      const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff", useCORS: true, logging: false });
+      const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+      const imgData = canvas.toDataURL("image/png");
+      const ratio = pdf.internal.pageSize.getWidth() / canvas.width;
+      const h = canvas.height * ratio;
+      pdf.addImage(imgData, "PNG", 0, 0, pdf.internal.pageSize.getWidth(), h);
+      if (pdfViewerUrlRef.current) URL.revokeObjectURL(pdfViewerUrlRef.current);
+      const url = URL.createObjectURL(pdf.output("blob"));
+      pdfViewerUrlRef.current = url;
+      setPdfViewerUrl(url);
+    } catch (e) {
+      console.error("Daily PDF error:", e);
+      toast.error("فشل إنشاء فاتورة اليوم");
+    } finally {
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      if (container && container.parentElement) container.remove();
+      else document.getElementById("caisse-daily")?.remove();
+      setPrinting(false);
+    }
+  }
+
   const filteredMovements = useMemo(() => (data?.movements ?? []).filter((m) => {
+    if (filterDay && m.date !== filterDay) return false;
     if (!search.trim()) return true;
     const q = search.trim().toLowerCase();
     const category = translateDescription(t, m.category) + " " + m.category;
@@ -189,8 +263,17 @@ export default function CaissePage() {
       .filter(Boolean)
       .some((v) => v!.toLowerCase().includes(q));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [data?.movements, search, t]);
-  useEffect(() => { setPage(1); }, [search, filterType, allTime, viewMonth]);
+  }), [data?.movements, search, filterDay, t]);
+
+  const dailyStats = useMemo(() => {
+    if (!filterDay || !data?.movements) return null;
+    const dayMovs = data.movements.filter((m) => m.date === filterDay);
+    const income = dayMovs.filter((m) => m.type === "income").reduce((s, m) => s + m.amount, 0);
+    const expense = dayMovs.filter((m) => m.type === "expense").reduce((s, m) => s + m.amount, 0);
+    return { count: dayMovs.length, income, expense, balance: income - expense, movements: dayMovs };
+  }, [filterDay, data?.movements]);
+
+  useEffect(() => { setPage(1); }, [search, filterType, allTime, viewMonth, filterDay]);
   const totalPages = Math.max(1, Math.ceil(filteredMovements.length / PAGE_SIZE));
   const paginatedMovements = useMemo(() => filteredMovements.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [filteredMovements, page]);
   useEffect(() => { if (page > totalPages) setPage(totalPages); }, [totalPages, page]);
@@ -324,15 +407,35 @@ export default function CaissePage() {
           {t("caisse.all_time")}
         </label>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => changeMonth(-1)} title={t("payments.prev_month")} disabled={allTime}>
+          <Button variant="outline" size="icon" onClick={() => changeMonth(-1)} title={t("payments.prev_month")} disabled={allTime || !!filterDay}>
             {direction === "rtl" ? <ChevronRight className="size-4" /> : <ChevronLeft className="size-4" />}
           </Button>
-          <Input type="month" value={viewMonth} onChange={(e) => e.target.value && setViewMonth(e.target.value)} className="w-44" aria-label={t("payments.month")} disabled={allTime} />
-          <Button variant="outline" size="icon" onClick={() => changeMonth(1)} title={t("payments.next_month")} disabled={allTime}>
+          <Input type="month" value={viewMonth} onChange={(e) => e.target.value && setViewMonth(e.target.value)} className="w-44" aria-label={t("payments.month")} disabled={allTime || !!filterDay} />
+          <Button variant="outline" size="icon" onClick={() => changeMonth(1)} title={t("payments.next_month")} disabled={allTime || !!filterDay}>
             {direction === "rtl" ? <ChevronLeft className="size-4" /> : <ChevronRight className="size-4" />}
           </Button>
         </div>
+        <div className="flex items-center gap-2">
+          <Input type="date" value={filterDay} onChange={(e) => setFilterDay(e.target.value)} className="w-44" aria-label="تصفية باليوم" title="تصفية باليوم" />
+          {filterDay && (
+            <Button variant="ghost" size="sm" onClick={() => setFilterDay("")} title="إلغاء فلتر اليوم">
+              ✕
+            </Button>
+          )}
+          <Button variant="default" size="sm" onClick={handlePrintDaily} disabled={!filterDay || !dailyStats || dailyStats.count === 0 || printing} title="فاتورة اليوم">
+            <FileText className="size-4 ml-1" /> فاتورة اليوم
+          </Button>
+        </div>
       </div>
+      {filterDay && dailyStats && (
+        <div className="rounded-lg border bg-muted/30 px-4 py-2 flex flex-wrap items-center gap-4 text-sm">
+          <span>اليوم: <b>{filterDay}</b></span>
+          <span className="text-green-600">مداخيل: <b>{revealed ? formatCurrency(dailyStats.income) : "••••"}</b></span>
+          <span className="text-red-600">مخاريج: <b>{revealed ? formatCurrency(dailyStats.expense) : "••••"}</b></span>
+          <span className={dailyStats.balance >= 0 ? "text-green-700" : "text-red-700"}>الرصيد: <b>{revealed ? formatCurrency(dailyStats.balance) : "••••"}</b></span>
+          <span className="text-muted-foreground">الحركات: {dailyStats.count}</span>
+        </div>
+      )}
 
       {/* Selection toolbar */}
       {selectedIds.size > 0 && (
