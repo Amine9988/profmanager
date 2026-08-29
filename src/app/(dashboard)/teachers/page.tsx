@@ -10,7 +10,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
 } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Trash2, DollarSign, Pencil, X, BookOpenCheck, Wallet } from "lucide-react";
+import { Plus, Trash2, Pencil, X, BookOpenCheck, Wallet } from "lucide-react";
 import { toast } from "sonner";
 
 interface SubjectInfo {
@@ -242,9 +242,6 @@ function TeacherCard({ teacher, onUpdated }: { teacher: Teacher; onUpdated: () =
             </Button>
             <Button variant="outline" size="icon" className="size-8" onClick={() => setShowDuesDialog(true)} title={t("teachers.dues")}>
               <Wallet className="size-4" />
-            </Button>
-            <Button variant="outline" size="icon" className="size-8" onClick={() => setShowPayDialog(true)} title={t("teachers.pay")}>
-              <DollarSign className="size-4" />
             </Button>
             <Button variant="outline" size="icon" className="size-8" onClick={() => setShowLogDialog(true)} title={t("teachers.teaching_log")}>
               <BookOpenCheck className="size-4" />
