@@ -68,5 +68,14 @@ exports.default = async function afterPack(context) {
     throw new Error("Mac package missing standalone-server/node_modules after copy");
   }
 
+  const appPath = path.join(context.appOutDir, "ProfManager.app");
+  try {
+    const { execSync } = require("child_process");
+    execSync(`codesign --force --deep --sign - "${appPath}"`, { stdio: "inherit" });
+    console.log("[afterPack] ad-hoc codesign ok");
+  } catch (e) {
+    console.warn("[afterPack] ad-hoc codesign skipped: " + (e.message || e));
+  }
+
   console.log("[afterPack] mac package ok standalone + node_modules + adb=" + fs.existsSync(adb));
 };

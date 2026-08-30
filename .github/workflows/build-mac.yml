@@ -41,7 +41,9 @@ jobs:
           echo "standalone ok"
       - name: Install Electron app toolchain
         working-directory: electron
-        run: npm install --no-fund --no-audit
+        run: |
+          chmod +x install-mac.command
+          npm install --no-fund --no-audit
       - name: Build DMG
         working-directory: electron
         run: |

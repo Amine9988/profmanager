@@ -1,6 +1,6 @@
 {
   "name": "profmanager-desktop",
-  "version": "1.0.32",
+  "version": "1.0.33",
   "description": "ProfManager — Gestion de cours particuliers",
   "main": "main.js",
   "scripts": {
@@ -114,19 +114,26 @@
       "iconSize": 80,
       "window": {
         "width": 540,
-        "height": 380
+        "height": 420
       },
       "contents": [
         {
           "x": 140,
-          "y": 200,
+          "y": 150,
           "type": "file"
         },
         {
           "x": 400,
-          "y": 200,
+          "y": 150,
           "type": "link",
           "path": "/Applications"
+        },
+        {
+          "x": 270,
+          "y": 330,
+          "type": "file",
+          "path": "install-mac.command",
+          "name": "Install ProfManager.command"
         }
       ]
     },
