@@ -21,7 +21,8 @@
     "build:full": "node scripts/build-electron.js",
     "build:publish": "node scripts/build-electron.js && node scripts/publish-r2.js",
     "publish:r2": "node scripts/publish-r2.js",
-    "build:mac": "node scripts/ci-mac-dmg.js"
+    "build:mac": "node scripts/ci-mac-dmg.js",
+    "verify:mac": "node scripts/verify-mac-release.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
