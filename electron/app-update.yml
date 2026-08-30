@@ -1,0 +1,4 @@
+provider: generic
+url: https://pub-a093dfe3d51241128f512f880dc36324.r2.dev/
+channel: latest
+updaterCacheDirName: profmanager-desktop-updater

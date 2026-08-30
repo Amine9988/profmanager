@@ -64,7 +64,7 @@ if (fs.existsSync(STATIC_SRC) && !fs.existsSync(STATIC_DST)) {
 
 // Step 2d: Clean up standalone server — remove source files, logs, duplicates
 console.log("\n[2d/5] Cleaning standalone server...");
-const CLEAN_DIRS = ["profmanager", "src", "electron", "scripts", "certafica"];
+const CLEAN_DIRS = ["profmanager", "src", "electron", "scripts", "certafica", "tests-tmp"];
 for (const dir of CLEAN_DIRS) {
   const p = path.join(STANDALONE_DST, dir);
   if (fs.existsSync(p)) { fs.rmSync(p, { recursive: true, force: true }); console.log(`  removed ${dir}/`); }
@@ -75,7 +75,9 @@ const CLEAN_GLOBS = [
   "test-*", "rebuild.bat", "setup-standalone-nm.js", "pnpm-*", "package-lock.json",
   "telecharger.html", "manuel-*.html", "migration-*.sql", "supabase-migration-*.sql",
   "0", "pm_logo.svg", "next-env.d.ts", "tsconfig.json", "eslint.config.mjs",
-  "postcss.config.mjs", "CLAUDE.md", "DECISIONS.md", "README.md", "AGENTS.md"
+  "postcss.config.mjs", "CLAUDE.md", "DECISIONS.md", "README.md", "AGENTS.md",
+  ".env", ".env.local", ".env.production", "debug-*.js", "*.bat", "*.cmd",
+  "repro.mjs", "render.yaml", "tsconfig.tsbuildinfo"
 ];
 for (const pattern of CLEAN_GLOBS) {
   const matches = fs.readdirSync(STANDALONE_DST).filter(f => {
@@ -102,7 +104,9 @@ fs.writeFileSync(SERVER_JS, srv, "utf8");
 console.log("  hostname default set to 0.0.0.0 (LAN scanning enabled)");
 
 function writeAppUpdateYml() {
-  const src = path.join(ELECTRON, "build", "app-update.yml");
+  const src = fs.existsSync(path.join(ELECTRON, "app-update.yml"))
+    ? path.join(ELECTRON, "app-update.yml")
+    : path.join(ELECTRON, "build", "app-update.yml");
   if (!fs.existsSync(src)) {
     console.log("  skip app-update.yml (src not found)");
     return;
@@ -126,6 +130,19 @@ function writeAppUpdateYml() {
       }
     } catch {}
   }
+}
+
+if (process.env.STANDALONE_ONLY === "1") {
+  const nm = path.join(STANDALONE_DST, "node_modules");
+  if (!fs.existsSync(path.join(STANDALONE_DST, "server.js"))) {
+    throw new Error("standalone-server/server.js missing after prepare");
+  }
+  if (!fs.existsSync(nm)) {
+    throw new Error("standalone-server/node_modules missing after prepare");
+  }
+  console.log("\n=== standalone-only prepare done ===");
+  console.log("  " + STANDALONE_DST);
+  process.exit(0);
 }
 
 // Step 4a: Build unpackaged app directory

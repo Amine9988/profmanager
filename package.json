@@ -21,7 +21,7 @@
     "build:full": "node scripts/build-electron.js",
     "build:publish": "node scripts/build-electron.js && node scripts/publish-r2.js",
     "publish:r2": "node scripts/publish-r2.js",
-    "build:mac": "node scripts/build-electron.js && npx electron-builder --mac --x64 --arm64 -c.electronDist=node_modules/electron/dist --config electron/package.json"
+    "build:mac": "node scripts/ci-mac-dmg.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

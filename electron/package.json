@@ -1,6 +1,6 @@
 {
   "name": "profmanager-desktop",
-  "version": "1.0.30",
+  "version": "1.0.32",
   "description": "ProfManager — Gestion de cours particuliers",
   "main": "main.js",
   "scripts": {
@@ -12,7 +12,7 @@
     "package": "electron-builder --dir",
     "installer": "electron-builder --win --prepackaged=dist/win-unpacked",
     "dist": "node ../scripts/build-electron.js",
-    "build:mac": "node ../scripts/patch-dmg-builder-windows.js && electron-builder --mac dmg --x64 --arm64 --publish never"
+    "build:mac": "node ../scripts/ci-mac-dmg.js"
   },
   "author": "Slimani Amine",
   "license": "MIT",
@@ -42,19 +42,29 @@
       "activation.html",
       "activation-preload.js",
       "package.json",
-      "public/icon.ico"
+      "public/icon.ico",
+      "public/icon.icns",
+      "public/icon.png"
     ],
+    "afterPack": "./after-pack.js",
     "extraResources": [
       {
         "from": "standalone-server",
-        "to": "standalone-server"
+        "to": "standalone-server",
+        "filter": [
+          "**/*",
+          "!.env",
+          "!.env.*",
+          "!**/.env",
+          "!**/.env.*"
+        ]
       },
       {
         "from": "platform-tools",
         "to": "platform-tools"
       },
       {
-        "from": "build/app-update.yml",
+        "from": "app-update.yml",
         "to": "."
       }
     ],
@@ -84,11 +94,16 @@
       ],
       "icon": "public/icon.icns",
       "category": "public.app-category.education",
-      "hardenedRuntime": false,
+      "hardenedRuntime": true,
       "gatekeeperAssess": false,
-      "entitlements": null,
-      "entitlementsInherit": null,
-      "artifactName": "ProfManager Setup ${version}-${arch}.${ext}"
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.plist",
+      "artifactName": "ProfManager Setup ${version}-${arch}.${ext}",
+      "extendInfo": {
+        "NSLocalNetworkUsageDescription": "ProfManager uses the local network so a phone can scan attendance cards on the same Wi-Fi.",
+        "NSBluetoothAlwaysUsageDescription": "ProfManager may use Bluetooth accessories for card readers.",
+        "NSBluetoothPeripheralUsageDescription": "ProfManager may use Bluetooth accessories for card readers."
+      }
     },
     "dmg": {
       "title": "ProfManager ${version}",

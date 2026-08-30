@@ -30,6 +30,11 @@ function getLanIp() {
 }
 
 function addFirewallRule(port) {
+  if (process.platform !== "win32") {
+    // macOS prompts on first inbound listen; no netsh equivalent is required.
+    log("firewall: skip on " + process.platform + " port=" + port);
+    return true;
+  }
   const exe = process.execPath;
   const name = "ProfManager LAN Scan";
   try {
@@ -49,13 +54,23 @@ function addFirewallRule(port) {
 }
 
 function findAdb() {
-  const candidates = [
-    path.join(process.resourcesPath || __dirname, "platform-tools", "adb.exe"),
-    path.join(__dirname, "platform-tools", "adb.exe"),
+  const bin = process.platform === "win32" ? "adb.exe" : "adb";
+  const roots = [
+    path.join(process.resourcesPath || __dirname, "platform-tools"),
+    path.join(__dirname, "platform-tools"),
   ];
-  for (const p of candidates) {
-    try { if (fs.existsSync(p)) return p; } catch {}
+  const names = process.platform === "win32" ? [bin] : [bin, "adb.exe"];
+  for (const root of roots) {
+    for (const name of names) {
+      const p = path.join(root, name);
+      try { if (fs.existsSync(p)) return p; } catch {}
+    }
   }
+  try {
+    const which = process.platform === "win32" ? "where adb" : "which adb";
+    const found = execSync(which, { encoding: "utf8", timeout: 3000, stdio: ["ignore", "pipe", "ignore"] }).trim().split(/\r?\n/)[0];
+    if (found && fs.existsSync(found)) return found;
+  } catch {}
   return null;
 }
 
@@ -63,6 +78,7 @@ function findAdb() {
 // read, which makes the standalone server's cold module load take 10-25s. Adding
 // a Defender exclusion for the install dir cuts cold startup to ~2-4s.
 function ensureDefenderExclusion(dir) {
+  if (process.platform !== "win32") return Promise.resolve(false);
   return new Promise((resolve) => {
     // The Defender exclusion list is only fully visible to elevated processes,
     // so a non-elevated probe cannot reliably detect an existing exclusion and
@@ -137,10 +153,17 @@ function killServer() {
     const pid = serverChild.pid;
     log("killing server child process pid=" + pid);
     serverChild.removeAllListeners("exit");
-    execSync("taskkill /PID " + pid + " /T /F", {
-      stdio: "ignore",
-      timeout: 5000,
-    });
+    if (process.platform === "win32") {
+      execSync("taskkill /PID " + pid + " /T /F", {
+        stdio: "ignore",
+        timeout: 5000,
+      });
+    } else {
+      try { process.kill(-pid, "SIGTERM"); } catch {}
+      try { execSync("kill -TERM -" + pid, { stdio: "ignore", timeout: 3000 }); } catch {}
+      try { execSync("kill -KILL -" + pid, { stdio: "ignore", timeout: 3000 }); } catch {}
+      try { serverChild.kill("SIGKILL"); } catch {}
+    }
   } catch (e) {
     try { serverChild.kill(); } catch {}
   }
@@ -160,11 +183,20 @@ app.on("will-quit", () => {
 });
 
 function resolveIcon() {
-  for (const p of [
-    path.join(__dirname, "public", "icon.ico"),
-    path.join(process.resourcesPath, "app", "public", "icon.ico"),
-  ]) {
-    try { if (fs.existsSync(p)) return p; } catch {}
+  const names = process.platform === "darwin"
+    ? ["icon.icns", "icon.png", "icon.ico"]
+    : ["icon.ico", "icon.png"];
+  const dirs = [
+    path.join(__dirname, "public"),
+    path.join(process.resourcesPath || "", "app", "public"),
+    process.resourcesPath || "",
+  ];
+  for (const dir of dirs) {
+    if (!dir) continue;
+    for (const name of names) {
+      const p = path.join(dir, name);
+      try { if (fs.existsSync(p)) return p; } catch {}
+    }
   }
   return undefined;
 }
@@ -202,20 +234,34 @@ function checkOverview(port, timeoutMs) {
 
 function killPortOwner(port) {
   try {
-    const out = execSync("netstat -ano | findstr /R \":" + port + " .*LISTENING\"", {
+    if (process.platform === "win32") {
+      const out = execSync("netstat -ano | findstr /R \":" + port + " .*LISTENING\"", {
+        encoding: "utf8",
+        timeout: 5000,
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+      const pids = [];
+      for (const line of out.split(/\r?\n/)) {
+        const m = line.trim().match(/\s+(\d+)\s*$/);
+        if (m && line.includes("LISTENING")) pids.push(m[1]);
+      }
+      for (const pid of pids) {
+        if (pid && pid !== String(process.pid)) {
+          log("killing broken port owner pid=" + pid);
+          try { execSync("taskkill /PID " + pid + " /T /F", { stdio: "ignore", timeout: 5000 }); } catch {}
+        }
+      }
+      return;
+    }
+    const out = execSync("lsof -tiTCP:" + port + " -sTCP:LISTEN", {
       encoding: "utf8",
       timeout: 5000,
       stdio: ["ignore", "pipe", "ignore"],
     });
-    const pids = [];
-    for (const line of out.split(/\r?\n/)) {
-      const m = line.trim().match(/\s+(\d+)\s*$/);
-      if (m && line.includes("LISTENING")) pids.push(m[1]);
-    }
-    for (const pid of pids) {
+    for (const pid of out.split(/\s+/).map((s) => s.trim()).filter(Boolean)) {
       if (pid && pid !== String(process.pid)) {
         log("killing broken port owner pid=" + pid);
-        try { execSync("taskkill /PID " + pid + " /T /F", { stdio: "ignore", timeout: 5000 }); } catch {}
+        try { execSync("kill -TERM " + pid, { stdio: "ignore", timeout: 3000 }); } catch {}
       }
     }
   } catch {}
@@ -273,6 +319,7 @@ function spawnServer(standaloneDir, port) {
       LOCAL_DB_PATH: resolveDbPath(standaloneDir),
     },
     stdio: ["ignore", "pipe", "pipe"],
+    detached: process.platform !== "win32",
   });
 
   serverChild = child;
@@ -402,6 +449,26 @@ function showLoadingPage() {
   ));
 }
 
+/**
+ * Bring the window and its renderer to the front.
+ *
+ * Startup replaces the loading page with a brand new document, and a fresh
+ * renderer starts unfocused: Windows then spends the user's first click
+ * activating the page instead of hitting the button under the cursor.
+ * Called only at startup, so it cannot steal the caret while typing.
+ */
+function focusAppWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    if (!mainWindow.isVisible()) mainWindow.show();
+    mainWindow.focus();
+    if (mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+      mainWindow.webContents.focus();
+    }
+  } catch {}
+}
+
 function loadWithRetry(url, attempts) {
   return new Promise((resolve) => {
     let tries = 0;
@@ -440,6 +507,35 @@ function loadWithRetry(url, attempts) {
   });
 }
 
+/**
+ * Electron ships no context menu at all, so right-clicking a field offered
+ * nothing and pasting was keyboard-only (Ctrl+V).
+ */
+function attachEditContextMenu(webContents) {
+  webContents.on("context-menu", (event, params) => {
+    const flags = params.editFlags || {};
+    const hasSelection = !!params.selectionText;
+    const items = [];
+
+    if (params.isEditable && flags.canCut && hasSelection) {
+      items.push({ label: "قص", role: "cut" });
+    }
+    if (flags.canCopy && hasSelection) {
+      items.push({ label: "نسخ", role: "copy" });
+    }
+    if (params.isEditable && flags.canPaste) {
+      items.push({ label: "لصق", role: "paste" });
+    }
+    if (params.isEditable && flags.canSelectAll) {
+      items.push({ type: "separator" }, { label: "تحديد الكل", role: "selectAll" });
+    }
+
+    if (!items.length) return;
+    const window = BrowserWindow.fromWebContents(webContents);
+    Menu.buildFromTemplate(items).popup({ window, x: params.x, y: params.y });
+  });
+}
+
 function createActivationWindow() {
   activationWindow = new BrowserWindow({
     width: 480,
@@ -454,6 +550,7 @@ function createActivationWindow() {
     },
   });
   activationWindow.setMenuBarVisibility(false);
+  attachEditContextMenu(activationWindow.webContents);
   activationWindow.loadFile("activation.html");
   activationWindow.on("closed", () => { activationWindow = null; });
 }
@@ -493,6 +590,7 @@ async function launchMainApp() {
     },
   });
   mainWindow.setMenuBarVisibility(false);
+  attachEditContextMenu(mainWindow.webContents);
   registerUpdater(mainWindow);
 
   mainWindow.on("close", (e) => {
@@ -515,8 +613,26 @@ async function launchMainApp() {
       killServer();
     }
   });
-  mainWindow.on("show", () => { try { if (mainWindow.webContents) mainWindow.webContents.focus(); } catch {} });
-  mainWindow.on("focus", () => { try { if (mainWindow.webContents) mainWindow.webContents.focus(); } catch {} });
+  // Only force webContents focus when showing from tray — calling it on every
+  // window "focus" steals caret from inputs on Windows (typing freeze).
+  mainWindow.on("show", () => {
+    try {
+      if (mainWindow.webContents && !mainWindow.webContents.isFocused()) {
+        mainWindow.webContents.focus();
+      }
+    } catch {}
+  });
+
+  // A full navigation swaps in a fresh document that starts unfocused, so the
+  // next click would be spent focusing the page. In-page (client-side) route
+  // changes don't fire this, so the caret is never taken while typing.
+  mainWindow.webContents.on("did-navigate", () => {
+    try {
+      if (mainWindow.isFocused() && !mainWindow.webContents.isFocused()) {
+        mainWindow.webContents.focus();
+      }
+    } catch {}
+  });
 
   // Show the window immediately with a styled loading page, then load the
     // real app once the (possibly slow cold-starting) server is ready.
@@ -550,7 +666,13 @@ async function launchMainApp() {
       const loaded = await loadWithRetry("http://127.0.0.1:" + port + "/overview", 30);
       if (!loaded) {
         showErrorPage("Le serveur local n'a pas répondu après plusieurs tentatives. Vérifiez le fichier log puis relancez.");
+        focusAppWindow();
       } else {
+        // Re-run after the first paints: the renderer can drop focus again
+        // while it hydrates, which would still swallow the first click.
+        focusAppWindow();
+        setTimeout(focusAppWindow, 150);
+        setTimeout(focusAppWindow, 600);
         setTimeout(() => {
           try { checkUpdates(); } catch (e) { log("auto-check failed: " + e.message); }
         }, 5000);
@@ -562,7 +684,13 @@ async function launchMainApp() {
 }
 
 app.whenReady().then(() => {
-  log("ready");
+  log("ready platform=" + process.platform + " arch=" + process.arch);
+  if (process.platform === "darwin" && app.dock) {
+    try {
+      const ic = resolveIcon();
+      if (ic) app.dock.setIcon(ic);
+    } catch {}
+  }
 
   const licenseResult = checkLicenseOnStartup(app);
   log("license check valid=" + licenseResult.valid + " reason=" + (licenseResult.reason || "none"));

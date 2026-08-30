@@ -24,9 +24,25 @@ let updateState = {
   canAutoDownload: true,
 };
 
+function isMac() {
+  return process.platform === "darwin";
+}
+
+function defaultInstallerName(version) {
+  if (isMac()) {
+    const arch = process.arch === "arm64" ? "arm64" : "x64";
+    return `ProfManager Setup ${version}-${arch}.dmg`;
+  }
+  return `ProfManager-Setup-${version}.exe`;
+}
+
 function installerUrl(version, fileName) {
-  const file = (fileName || `ProfManager-Setup-${version}.exe`).replace(/ /g, "-");
-  return FEED_URL + file;
+  let file = fileName || defaultInstallerName(version);
+  file = String(file).split(/[\\/]/).pop() || file;
+  if (isMac() && /\.exe$/i.test(file)) file = defaultInstallerName(version);
+  if (!isMac() && /\.dmg$/i.test(file)) file = defaultInstallerName(version);
+  if (!isMac()) file = file.replace(/ /g, "-");
+  return FEED_URL + encodeURI(file);
 }
 
 function cmpVer(a, b) {
@@ -82,7 +98,7 @@ async function applyChannelFallback() {
   if (fallbackBusy) return getStatus();
   fallbackBusy = true;
   try {
-    const yml = await fetchText(FEED_URL + "latest.yml");
+    const yml = await fetchText(FEED_URL + (isMac() ? "latest-mac.yml" : "latest.yml"));
     const parsed = parseLatestYml(yml);
     if (!parsed.version) {
       updateState = { status: "idle", info: null, error: null, downloadProgress: null, canAutoDownload: true };
@@ -230,6 +246,8 @@ function registerUpdater(win) {
 
   ipcMain.handle("update-open-url", async (_e, url) => {
     if (!url || typeof url !== "string" || !url.startsWith(FEED_URL)) return { ok: false };
+    if (isMac() && /\.exe(\?|$)/i.test(url)) return { ok: false };
+    if (!isMac() && /\.dmg(\?|$)/i.test(url)) return { ok: false };
     await shell.openExternal(url);
     return { ok: true };
   });

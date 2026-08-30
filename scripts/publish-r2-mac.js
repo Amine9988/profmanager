@@ -31,19 +31,40 @@ async function upload(localPath, key, ct){
 }
 (async()=>{
   console.log(`=== Publish Mac to R2 v${VERSION} ===`);
+  const { execFileSync } = require("child_process");
+  try {
+    execFileSync(process.execPath, [path.join(__dirname, "merge-mac-channel.js"), DIST_DIR], { stdio: "inherit" });
+  } catch (e) {
+    console.error("merge-mac-channel failed:", e.message);
+    process.exit(1);
+  }
   const latestMac = path.join(DIST_DIR, "latest-mac.yml");
-  // Find dmg/zip files (may contain spaces)
-  const files = fs.readdirSync(DIST_DIR).filter(f=> f.endsWith(".dmg") || f.endsWith(".zip") || f.endsWith(".blockmap"));
-  console.log("Found files:", files);
+  function walk(dir, acc = []) {
+    for (const name of fs.readdirSync(dir)) {
+      const p = path.join(dir, name);
+      if (fs.statSync(p).isDirectory()) walk(p, acc);
+      else acc.push(p);
+    }
+    return acc;
+  }
+  const files = walk(DIST_DIR).filter((f) =>
+    f.endsWith(".dmg") || f.endsWith(".blockmap")
+  );
+  console.log("Found files:", files.map((f) => path.basename(f)));
+  if (!files.some((f) => f.endsWith(".dmg"))) {
+    console.error("No .dmg to publish");
+    process.exit(1);
+  }
   if (fs.existsSync(latestMac)){
     let txt = fs.readFileSync(latestMac,"utf8");
     // Ensure buildId
     if (!txt.includes("buildId:")) txt += `\nbuildId: "${VERSION}-${Date.now()}"\n`;
     fs.writeFileSync(latestMac, txt);
   }
-  for(const f of files){
-    await upload(path.join(DIST_DIR,f), `v${VERSION}/${f}`, "application/octet-stream");
-    await upload(path.join(DIST_DIR,f), f, "application/octet-stream");
+  for (const f of files) {
+    const name = path.basename(f);
+    await upload(f, `v${VERSION}/${name}`, "application/octet-stream");
+    await upload(f, name, "application/octet-stream");
   }
   if (fs.existsSync(latestMac)){
     await upload(latestMac, `v${VERSION}/latest-mac.yml`, "text/yaml");
