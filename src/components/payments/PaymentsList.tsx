@@ -15,9 +15,10 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, RefreshCw, Trash2, FileText, AlertTriangle, ChevronLeft, ChevronRight, Lock, Eye, EyeOff, Search } from "lucide-react";
+import { Plus, RefreshCw, Trash2, FileText, AlertTriangle, ChevronLeft, ChevronRight, Lock, Eye, EyeOff, Search } from "@/lib/lucide";
 import html2canvas from "html2canvas-pro";
 import { toast } from "sonner";
+import { toastInvoiceEmail } from "@/lib/invoice-email-toast";
 import Link from "next/link";
 
 function EditPaymentModal({
@@ -51,13 +52,14 @@ function EditPaymentModal({
           paidAt: amountPaid > 0 ? new Date().toISOString() : null,
         }),
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         toast.success(t("payments.paymentRecorded"));
+        toastInvoiceEmail(t, data.invoiceEmail);
         onSaved();
         onClose();
       } else {
-        const err = await res.json();
-        toast.error(err.error || t("common.error"));
+        toast.error(data.error || t("common.error"));
       }
     } catch {
       toast.error(t("common.error"));
@@ -131,6 +133,7 @@ interface Payment {
   receiptNumber: string | null;
   receiptSequence: number | null;
   groupId: string | null;
+  groupName?: string | null;
   student: {
     id: string;
     fullName: string;
@@ -175,63 +178,74 @@ function PaymentRecordDialog({ onRecorded, defaultMonth }: { onRecorded: (month?
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   });
   const [amount, setAmount] = useState("");
-  const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [discount, setDiscount] = useState("0");
-  const [existingPayment, setExistingPayment] = useState<{ amountDue: number; amountPaid: number } | null>(null);
 
   useEffect(() => {
     if (open) {
-      fetch("/api/groups?withStudents=true")
+      fetch("/api/groups")
         .then((r) => r.json())
-        .then((data) => setGroups(Array.isArray(data) ? data : []))
+        .then((data) =>
+          setGroups((Array.isArray(data) ? data : []).map((g: any) => ({ ...g, students: g.students || [] })))
+        )
         .catch(() => {});
-      fetch("/api/students")
-        .then((r) => r.json())
-        .then(setStudents)
-        .catch(() => {});
+      setStudents([]);
       requestAnimationFrame(() => {
         setGroupId("");
         setStudentId("");
         setAmount("");
-        setNote("");
         setDiscount("0");
         setMonth(defaultMonth || new Date().toISOString().slice(0, 7));
-        setExistingPayment(null);
       });
     }
   }, [open]);
 
   useEffect(() => {
-    if (!studentId || !month) {
-      setExistingPayment(null);
-      return;
-    }
-    fetch(`/api/payments?studentId=${studentId}&year=${month.split("-")[0]}&month=${month.split("-")[1]}`)
+    if (!open || !groupId) return;
+    fetch(`/api/groups?id=${encodeURIComponent(groupId)}&withStudents=true`)
       .then((r) => r.json())
       .then((data) => {
-        setExistingPayment(data.length > 0 ? { amountDue: data[0].amountDue, amountPaid: data[0].amountPaid } : null);
+        const g = Array.isArray(data) ? data[0] : null;
+        if (!g) return;
+        setGroups((prev) =>
+          prev.map((x) =>
+            x.id === groupId
+              ? { ...x, students: g.students || [], pricePerSession: g.pricePerSession ?? x.pricePerSession, priceType: g.priceType ?? x.priceType }
+              : x
+          )
+        );
       })
-      .catch(() => setExistingPayment(null));
-  }, [studentId, month]);
+      .catch(() => {});
+  }, [open, groupId]);
+
+  useEffect(() => {
+    if (!open || !studentId) return;
+    const fromGroup = groups.flatMap((g) => g.students || []).find((s) => s.id === studentId);
+    if (fromGroup) {
+      setStudents((prev) => {
+        if (prev.some((s) => s.id === studentId)) return prev;
+        return [...prev, { id: fromGroup.id, fullName: fromGroup.fullName, monthlyFee: 0 }];
+      });
+    }
+  }, [open, studentId, groups]);
 
   const selectedGroup = groups.find((g) => g.id === groupId);
   const availableStudents = selectedGroup?.students || [];
   const selectedStudent = students.find((s) => s.id === studentId);
   const studentName = selectedStudent?.fullName || "";
   const discountPct = Math.min(100, Math.max(0, Number(discount) || 0));
-  const basePrice = selectedGroup?.pricePerSession ?? existingPayment?.amountDue ?? 0;
-  const discountedDue = basePrice > 0 && !existingPayment ? Math.round(basePrice * (1 - discountPct / 100)) : null;
-  const amountDue = discountedDue ?? existingPayment?.amountDue ?? selectedGroup?.pricePerSession ?? 0;
-  const alreadyPaid = existingPayment?.amountPaid ?? 0;
-  const remaining = Math.max(amountDue - alreadyPaid, 0);
+  const groupPrice = Number(selectedGroup?.pricePerSession);
+  const basePrice = Number.isFinite(groupPrice) && groupPrice > 0 ? groupPrice : 0;
+  const typedPaid = Number(amount) || 0;
+  const amountDue = basePrice > 0 ? Math.round(basePrice * (1 - discountPct / 100)) : typedPaid;
+  const remaining = Math.max(amountDue - typedPaid, 0);
 
   function applyDiscountAndFill(pctStr: string, gid = groupId) {
     setDiscount(pctStr);
     const pct = Math.min(100, Math.max(0, Number(pctStr) || 0));
-    if (existingPayment) return; // never rewrite an already-recorded month
     const g = groups.find((x) => x.id === gid);
-    if (g?.pricePerSession) setAmount(String(Math.round(g.pricePerSession * (1 - pct / 100))));
+    const price = Number(g?.pricePerSession);
+    if (Number.isFinite(price) && price > 0) setAmount(String(Math.round(price * (1 - pct / 100))));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -243,15 +257,16 @@ function PaymentRecordDialog({ onRecorded, defaultMonth }: { onRecorded: (month?
       const res = await fetch("/api/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ studentId, groupId, month, amount: amt, note: note || undefined, paymentDate, discountPercent: discountPct }),
+        body: JSON.stringify({ studentId, groupId, month, amount: amt, paymentDate, discountPercent: discountPct }),
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         toast.success(t("payments.paymentRecorded"));
+        toastInvoiceEmail(t, data.invoiceEmail);
         setOpen(false);
         onRecorded(month);
       } else {
-        const err = await res.json();
-        toast.error(err.error || t("common.error"));
+        toast.error(data.error || t("common.error"));
       }
     } catch {
       toast.error(t("common.error"));
@@ -282,7 +297,8 @@ function PaymentRecordDialog({ onRecorded, defaultMonth }: { onRecorded: (month?
                 setGroupId(gid);
                 setStudentId("");
                 const g = groups.find((x) => x.id === gid);
-                if (g?.pricePerSession) setAmount(String(Math.round(g.pricePerSession * (1 - discountPct / 100))));
+                const price = Number(g?.pricePerSession);
+                if (Number.isFinite(price) && price > 0) setAmount(String(Math.round(price * (1 - discountPct / 100))));
                 else setAmount("");
               }}
               required
@@ -292,7 +308,7 @@ function PaymentRecordDialog({ onRecorded, defaultMonth }: { onRecorded: (month?
               {groups.map((g) => (
                 <option key={g.id} value={g.id}>
                   {g.name}
-                  {g.pricePerSession != null ? ` â€” ${formatCurrency(g.pricePerSession)}` : ""}
+                  {Number(g.pricePerSession) > 0 ? ` — ${formatCurrency(Number(g.pricePerSession))}` : ""}
                 </option>
               ))}
             </select>
@@ -334,7 +350,7 @@ function PaymentRecordDialog({ onRecorded, defaultMonth }: { onRecorded: (month?
             </div>
           </div>
 
-          {groupId && studentId && basePrice > 0 && !existingPayment && (
+          {groupId && studentId && basePrice > 0 && (
             <div className="space-y-2">
               <Label htmlFor="pdiscount">{t("payments.discount_label")}</Label>
               <Input
@@ -349,7 +365,7 @@ function PaymentRecordDialog({ onRecorded, defaultMonth }: { onRecorded: (month?
             </div>
           )}
 
-          {groupId && studentId && month && (
+          {groupId && studentId && month && (basePrice > 0 || typedPaid > 0) && (
             <div className="rounded-lg border bg-muted/30 p-4 space-y-2">
               {basePrice > 0 && (
                 <div className="flex justify-between text-sm">
@@ -357,10 +373,10 @@ function PaymentRecordDialog({ onRecorded, defaultMonth }: { onRecorded: (month?
                   <span>{formatCurrency(basePrice)}</span>
                 </div>
               )}
-              {discountPct > 0 && discountedDue !== null && (
+              {discountPct > 0 && basePrice > 0 && (
                 <div className="flex justify-between text-sm text-green-600">
                   <span>{t("payments.discount_value", { pct: discountPct })}</span>
-                  <span>−{formatCurrency(basePrice - discountedDue)}</span>
+                  <span>−{formatCurrency(basePrice - amountDue)}</span>
                 </div>
               )}
               <div className="flex justify-between text-sm border-t pt-2">
@@ -369,7 +385,7 @@ function PaymentRecordDialog({ onRecorded, defaultMonth }: { onRecorded: (month?
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">{t("payments.amount_paid")}</span>
-                <span className="font-semibold text-green-600">{formatCurrency(alreadyPaid)}</span>
+                <span className="font-semibold text-green-600">{formatCurrency(typedPaid)}</span>
               </div>
               <div className="flex justify-between text-sm border-t pt-2">
                 <span className="text-muted-foreground">{t("payments.remaining")}</span>
@@ -383,10 +399,6 @@ function PaymentRecordDialog({ onRecorded, defaultMonth }: { onRecorded: (month?
           <div className="space-y-2">
             <Label htmlFor="amount">{t("payments.amount_paid")}</Label>
             <Input id="amount" type="number" min="0" step="100" value={amount} onChange={(e) => setAmount(e.target.value)} required placeholder={t("payments.amount_paid")} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="note">{t("payments.notes_label")}</Label>
-            <Input id="note" value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("payments.notes_placeholder")} />
           </div>
           <DialogFooter className="flex gap-2">
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
@@ -463,9 +475,7 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
     return base.filter((p) => {
       if (!search.trim()) return true;
       const q = search.trim().toLowerCase();
-      const groups = (p.student?.groupStudents ?? [])
-        .map((gs) => gs.groups?.name || gs.group?.name || "")
-        .join(" ");
+      const groups = p.groupName || "";
       const month = new Date(p.month).toLocaleDateString(undefined, { year: "numeric", month: "long" });
       return [p.student?.fullName, groups, month, p.receiptNumber]
         .filter(Boolean)
@@ -480,21 +490,27 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
 
   const monthOverdue = payments.filter((p) => p.status === "overdue" || p.status === "partial");
   const monthOverdueTotal = monthOverdue.reduce((acc, p) => acc + Math.max(p.amountDue - p.amountPaid, 0), 0);
+  const monthOverdueStudents = new Set(monthOverdue.map((p) => p.studentId)).size;
 
   function calcSummary(data: Payment[]): PaymentSummary {
     const s: PaymentSummary = {
       totalDue: 0, totalPaid: 0, totalRemaining: 0,
       paidCount: 0, overdueCount: 0, pendingCount: 0, partialCount: 0,
     };
+    const overdueIds = new Set<string>();
+    const pendingIds = new Set<string>();
+    const paidIds = new Set<string>();
     for (const p of data) {
       s.totalDue += p.amountDue;
       s.totalPaid += p.amountPaid;
       s.totalRemaining += Math.max(p.amountDue - p.amountPaid, 0);
-      if (p.status === "paid") s.paidCount++;
-      else if (p.status === "overdue") s.overdueCount++;
-      else if (p.status === "partial") s.partialCount++;
-      else s.pendingCount++;
+      if (p.status === "overdue" || p.status === "partial") overdueIds.add(p.studentId);
+      else if (p.status === "pending") pendingIds.add(p.studentId);
+      else if (p.status === "paid") paidIds.add(p.studentId);
     }
+    s.overdueCount = overdueIds.size;
+    s.pendingCount = [...pendingIds].filter((id) => !overdueIds.has(id)).length;
+    s.paidCount = [...paidIds].filter((id) => !overdueIds.has(id) && !pendingIds.has(id)).length;
     return s;
   }
 
@@ -567,16 +583,7 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
     const baseDue = pct > 0 ? Math.round(p.amountDue / (1 - pct / 100)) : p.amountDue;
     const discountAmount = baseDue - p.amountDue;
     const remaining = Math.max(p.amountDue - p.amountPaid, 0);
-    const groupLabel = (() => {
-      const matched = (p.student?.groupStudents ?? []).find(
-        (gs) => gs.groups?.id === p.groupId || gs.group?.id === p.groupId
-      );
-      if (matched) return matched.groups?.name || matched.group?.name || "—";
-      const fallback = (p.student?.groupStudents ?? [])
-        .map((gs) => gs.groups?.name || gs.group?.name || null)
-        .find((n) => n);
-      return fallback || "—";
-    })();
+    const groupLabel = p.groupName || "—";
     return `
       <div id="inv-${i}" dir="rtl" style="width:350px;margin:0 auto 20px;padding:24px;font-family:'Segoe UI',Arial,sans-serif;background:#fff;direction:rtl;text-align:right;border:1px solid #e2e8f0;border-radius:8px;">
         <h2 style="text-align:center;font-size:18px;font-weight:700;margin:0 0 8px;color:#1e293b;">فاتورة الدفع</h2>
@@ -715,12 +722,13 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ amountPaid: payment.amountDue }),
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         toast.success(t("payments.paymentRecorded"));
+        toastInvoiceEmail(t, data.invoiceEmail);
         fetchPayments();
       } else {
-        const err = await res.json();
-        toast.error(err.error || t("common.error"));
+        toast.error(data.error || t("common.error"));
       }
     } catch {
       toast.error(t("common.error"));
@@ -861,7 +869,7 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
           <div className="bg-white rounded-lg shadow p-4">
             <p className="text-sm text-gray-500">{t("payments.status")}</p>
             <p className="text-lg font-semibold">
-              {summary.paidCount} {t("payments.paid")} {summary.overdueCount} {t("payments.overdue")} {summary.pendingCount > 0 && `${summary.pendingCount} ${t("payments.pending")}`}
+              {summary.paidCount} {t("payments.paid")} {summary.overdueCount} {t("payments.overdue")}
             </p>
           </div>
         </div>
@@ -937,7 +945,7 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
           <p className="text-sm text-red-800">
             <AlertTriangle className="size-4 inline mr-1 -mt-0.5" />
             {t("payments.overdue_aggregate", {
-              count: monthOverdue.length,
+              count: monthOverdueStudents,
               amount: formatCurrency(monthOverdueTotal),
             })}
           </p>
@@ -957,7 +965,7 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
             className="w-56 ps-8"
           />
         </div>
-        {["all", "paid", "overdue", "pending"].map((s) => (
+        {["all", "paid", "overdue"].map((s) => (
           <button
             key={s}
             onClick={() => setStatusFilter(s)}
@@ -1046,7 +1054,7 @@ export default function PaymentsList({ year, month }: PaymentsListProps) {
                     </td>
                     <td style={{ padding: "12px", textAlign: align, fontWeight: 600, fontSize: "14px", color: "hsl(var(--foreground))" }}>{p.student?.fullName}</td>
                     <td style={{ padding: "12px", textAlign: align, fontSize: "14px", color: "hsl(var(--foreground))" }}>
-                      {p.student?.groupStudents?.map((gs) => gs.groups?.name || gs.group?.name || "—").join(", ") || "—"}
+                      {p.groupName || "—"}
                     </td>
                     <td style={{ padding: "12px", textAlign: align, fontSize: "14px", color: "hsl(var(--foreground))" }}>
                       {new Date(p.month).toLocaleDateString(undefined, { year: "numeric", month: "long" })}

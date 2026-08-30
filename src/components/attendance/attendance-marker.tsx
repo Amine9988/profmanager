@@ -5,7 +5,7 @@ import { markAttendance, markAllPresent } from "@/server/actions/attendance";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Check, X, CheckCheck } from "lucide-react";
+import { Check, X, CheckCheck } from "@/lib/lucide";
 import { cn, initials } from "@/lib/utils";
 import { toast } from "sonner";
 import { useT, useI18n } from "@/lib/i18n";

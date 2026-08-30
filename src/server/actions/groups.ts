@@ -9,7 +9,8 @@ import { toCamelArray, toCamelCase } from "@/lib/db";
 import type { ActionResult } from "./students";
 import { generateGroupSessions, getSchoolYearSettings } from "./sessions";
 import { checkRoomConflictsForSlots, checkRoomConflict } from "@/lib/room-conflict";
-import { parseSlotsFromFormData, toSqlDate } from "@/lib/group-form";
+import { parseSlotsFromFormData, toDateInputValue, toSqlDate } from "@/lib/group-form";
+import { formatLocalYmd, isLikelyBakedYearEnd, resolveGroupSessionRange } from "@/lib/session-dates";
 
 export async function getRooms() {
   try {
@@ -25,17 +26,43 @@ export async function getRooms() {
   }
 }
 
+/** Lightweight id+name list for student create/edit pickers. */
+export async function getGroupOptions(): Promise<{ id: string; name: string }[]> {
+  try {
+    const { tenantId, supabase } = await getTenantContext();
+    const { data } = await supabase
+      .from("groups")
+      .select("id, name")
+      .eq("tenantId", tenantId)
+      .order("name");
+    return (data || [])
+      .map((g: any) => ({ id: String(g.id), name: String(g.name || "") }))
+      .filter((g: { id: string; name: string }) => g.id && g.name);
+  } catch (e) {
+    console.error("[getGroupOptions] error:", e);
+    return [];
+  }
+}
+
 export async function getGroups() {
   const t0 = Date.now();
   const { tenantId, supabase } = await getTenantContext();
   const t1 = Date.now();
 
-    const { data: groups } = await supabase
+    let { data: groups } = await supabase
       .from("groups")
       .select("id, name, level, maxCapacity, status, pricePerSession, priceType, roomId, color, expiresAt, teacherId, subjectId, subjects(id, name), teachers(id, firstName, lastName), group_students(id, status)")
       .eq("tenantId", tenantId)
       .order("createdAt", { ascending: false })
       .limit(100);
+    if (!groups || groups.length === 0) {
+      const fallback = await supabase
+        .from("groups")
+        .select("id, name, level, maxCapacity, status, pricePerSession, priceType, roomId, color, expiresAt, teacherId, subjectId")
+        .eq("tenantId", tenantId)
+        .order("name");
+      groups = fallback.data || groups;
+    }
   const t2 = Date.now();
   console.log(`[perf] getGroups: getTenantContext ${t1-t0}ms, query ${t2-t1}ms, total ${Date.now()-t0}ms, rows=${groups?.length||0}`);
 
@@ -92,22 +119,31 @@ export async function getGroup(groupId: string) {
     }
     if (!group) return null;
 
-    const [{ data: groupStudents }, { data: scheduleSlots }, { data: sessions }] = await Promise.all([
-      supabase.from("group_students").select("*, students(*)").eq("groupId", groupId),
+    const [{ data: groupStudents }, { data: scheduleSlots }, { data: extraRows }] = await Promise.all([
+      supabase
+        .from("group_students")
+        .select("id, groupId, studentId, status, clientType, remainingSessions, consumedSessions, enrolledAt, students(id, fullName, gradeLevel, phone, status)")
+        .eq("groupId", groupId)
+        .eq("status", "active"),
       supabase.from("schedule_slots").select("*").eq("tenantId", tenantId).eq("groupId", groupId),
-      supabase.from("sessions").select("*").eq("tenantId", tenantId).eq("groupId", groupId),
+      supabase
+        .from("sessions")
+        .select("id, sessionDate, startTime, endTime, status, type")
+        .eq("tenantId", tenantId)
+        .eq("groupId", groupId)
+        .in("type", ["extra", "makeup"])
+        .order("sessionDate", { ascending: false })
+        .limit(2000),
     ]);
 
     const g = toCamelCase(group) as any;
     g.groupStudents = toCamelArray(groupStudents || []).filter((gs: any) => gs.status === "active");
     g.scheduleSlots = toCamelArray(scheduleSlots || []);
-    const allSessions = toCamelArray(sessions || []).sort(
-      (a: any, b: any) => new Date(b.sessionDate).getTime() - new Date(a.sessionDate).getTime()
-    );
-    g.extraSessions = allSessions
-      .filter((s: any) => s.type === "extra" || s.type === "makeup")
-      .slice(0, 20);
-    g.sessions = allSessions.filter((s: any) => s.type !== "extra" && s.type !== "makeup").slice(0, 10);
+    g.extraSessions = toCamelArray(extraRows || []).sort((a: any, b: any) => {
+      const day = String(b.sessionDate || "").localeCompare(String(a.sessionDate || ""));
+      if (day !== 0) return day;
+      return String(b.startTime || "").localeCompare(String(a.startTime || ""));
+    });
 
     let teacher = g.teachers;
     if (!teacher && g.teacherId) {
@@ -185,12 +221,8 @@ export async function createGroup(_prevState: ActionResult, formData: FormData):
       expiresAt = toSqlDate(rawExpires);
       if (!expiresAt) return { error: t("groups.expires_required") };
     } else {
-      try {
-        const sy = await getSchoolYearSettings();
-        expiresAt = toSqlDate(sy?.schoolYearEnd);
-      } catch {
-        expiresAt = null;
-      }
+      // null = follow school year end dynamically (do not copy a fixed date)
+      expiresAt = null;
     }
 
     const { slots: slotsToCheck, incomplete } = parseSlotsFromFormData(formData);
@@ -224,6 +256,7 @@ export async function createGroup(_prevState: ActionResult, formData: FormData):
       roomId: parsed.data.roomId || null,
       color: parsed.data.color || null,
       expiresAt: expiresAt || null,
+      expiresAtCustom: useExpiresAt ? 1 : 0,
       createdAt: now,
       updatedAt: now,
     }).select().single();
@@ -325,15 +358,34 @@ export async function generateSessions(groupId: string, weeksAhead = 8): Promise
     const { data: group } = await ctx.supabase.from("groups").select("*, schedule_slots(*)").eq("id", groupId).eq("tenantId", ctx.tenantId).single();
     if (!group) return { error: t("errors.group_not_found") };
 
+    const schoolYear = await getSchoolYearSettings();
+    const { data: peerEnds } = await ctx.supabase
+      .from("groups")
+      .select("expiresAt")
+      .eq("tenantId", ctx.tenantId);
+    const customEnd =
+      Number((group as any).expiresAtCustom) === 1 ||
+      (!isLikelyBakedYearEnd((group as any).expiresAt, schoolYear?.schoolYearEnd, (peerEnds || []).map((g: any) => g.expiresAt)) &&
+        !!toDateInputValue((group as any).expiresAt));
+    const range = resolveGroupSessionRange(
+      schoolYear?.schoolYearStart,
+      schoolYear?.schoolYearEnd,
+      (group as any).expiresAt,
+      { customEnd }
+    );
+
     const sessionsToCreate: Record<string, unknown>[] = [];
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const now = new Date().toISOString();
-    const expiresAt = (group as any).expiresAt ? new Date((group as any).expiresAt) : null;
-    if (expiresAt) expiresAt.setHours(23, 59, 59, 999);
 
-    // Idempotency guard: never create a session that already exists for the
-    // same slot on the same date (repeated invocations must be safe).
+    let hardEnd: Date | null = range?.end ?? null;
+    if (!hardEnd) {
+      hardEnd = new Date(today);
+      hardEnd.setDate(hardEnd.getDate() + weeksAhead * 7);
+    }
+    hardEnd.setHours(0, 0, 0, 0);
+
     const { data: existingSessions } = await ctx.supabase
       .from("sessions")
       .select("sessionDate, scheduleSlotId, status")
@@ -343,16 +395,20 @@ export async function generateSessions(groupId: string, weeksAhead = 8): Promise
     const preserved = new Set<string>();
     for (const ex of existingSessions || []) {
       existingKeys.add(`${ex.sessionDate}|${ex.scheduleSlotId}`);
-      if (ex.status === "completed" || ex.status === "cancelled") preserved.add(`${ex.sessionDate}|${ex.scheduleSlotId}`);
+      if (ex.status === "completed" || ex.status === "cancelled") {
+        preserved.add(`${ex.sessionDate}|${ex.scheduleSlotId}`);
+      }
     }
 
+    const maxWeeks = Math.ceil((hardEnd.getTime() - today.getTime()) / (7 * 24 * 3600 * 1000)) + 2;
     for (const slot of (group.scheduleSlots || group.schedule_slots || []) as any[]) {
-      for (let week = 0; week < weeksAhead; week++) {
+      for (let week = 0; week < Math.max(weeksAhead, maxWeeks); week++) {
         const date = new Date(today);
         const dayDiff = (slot.dayOfWeek - date.getDay() + 7) % 7;
         date.setDate(date.getDate() + dayDiff + week * 7);
-        if (expiresAt && date > expiresAt) continue;
-        const sessionDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+        date.setHours(0, 0, 0, 0);
+        if (date.getTime() > hardEnd.getTime()) break;
+        const sessionDate = formatLocalYmd(date);
         const key = `${sessionDate}|${slot.id}`;
         if (existingKeys.has(key) || preserved.has(key)) continue;
         sessionsToCreate.push({
@@ -383,17 +439,22 @@ export async function generateSessions(groupId: string, weeksAhead = 8): Promise
   }
 }
 
-export async function enrollStudent(groupId: string, studentId: string, clientType: string = "institution"): Promise<ActionResult> {
+export async function enrollStudent(groupId: string, studentId: string, clientType?: string): Promise<ActionResult> {
   const t = await getT();
   try {
     const ctx = await requirePermission("groups.update");
-    const type = clientType === "teacher" ? "teacher" : "institution";
 
     const [{ data: group }, { data: student }] = await Promise.all([
       ctx.supabase.from("groups").select("id").eq("id", groupId).eq("tenantId", ctx.tenantId).single(),
-      ctx.supabase.from("students").select("id").eq("id", studentId).eq("tenantId", ctx.tenantId).single(),
+      ctx.supabase.from("students").select("id, clientType").eq("id", studentId).eq("tenantId", ctx.tenantId).single(),
     ]);
     if (!group || !student) return { error: t("common.error") };
+    const type =
+      clientType === "teacher" || clientType === "institution"
+        ? clientType
+        : (student as any).clientType === "teacher"
+          ? "teacher"
+          : "institution";
 
     const { data: existing } = await ctx.supabase.from("group_students").select("id").eq("groupId", groupId).eq("studentId", studentId).maybeSingle();
     if (existing) {
@@ -574,12 +635,8 @@ export async function updateGroup(_prevState: ActionResult, formData: FormData):
       expiresAt = toSqlDate(rawExpires2);
       if (!expiresAt) return { error: t("groups.expires_required") };
     } else {
-      try {
-        const sy = await getSchoolYearSettings();
-        expiresAt = toSqlDate(sy?.schoolYearEnd);
-      } catch {
-        expiresAt = null;
-      }
+      // null = follow school year end dynamically
+      expiresAt = null;
     }
 
     // Validate slots BEFORE mutating the group – prevents partial update that
@@ -623,6 +680,7 @@ export async function updateGroup(_prevState: ActionResult, formData: FormData):
       roomId: parsed.data.roomId || null,
       color: parsed.data.color || null,
       expiresAt: expiresAt || null,
+      expiresAtCustom: useExpiresAt ? 1 : 0,
     }).eq("id", groupId);
     if (updateErr) return { error: updateErr.message };
 
@@ -681,7 +739,23 @@ export async function updateGroup(_prevState: ActionResult, formData: FormData):
     try {
       if (submittedSlots.length === 0 && existingSlotIds.size > 0) {
         // All slots were removed: drop leftover scheduled sessions.
-        await ctx.supabase.from("sessions").delete().eq("groupId", groupId).eq("tenantId", ctx.tenantId).eq("status", "scheduled");
+        const todayStr = formatLocalYmd(new Date());
+        const { data: leftover } = await ctx.supabase
+          .from("sessions")
+          .select("id, sessionDate, type")
+          .eq("groupId", groupId)
+          .eq("tenantId", ctx.tenantId)
+          .eq("status", "scheduled");
+        const leftoverIds = (leftover || [])
+          .filter((s: any) => {
+            if (s.type === "extra" || s.type === "makeup") return false;
+            const day = toDateInputValue(s.sessionDate);
+            return !!day && day > todayStr;
+          })
+          .map((s: any) => s.id);
+        if (leftoverIds.length > 0) {
+          await ctx.supabase.from("sessions").delete().in("id", leftoverIds).eq("tenantId", ctx.tenantId);
+        }
       } else if (submittedSlots.length > 0 || existingSlotIds.size > 0) {
         await generateGroupSessions(groupId);
       }
@@ -710,16 +784,15 @@ export async function deleteScheduleSlot(slotId: string): Promise<ActionResult> 
     await ctx.supabase.from("schedule_slots").delete().eq("id", slotId);
 
     // Remove future scheduled sessions for this slot only — keep past attendance
-    const today = new Date();
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const todayStr = formatLocalYmd(new Date());
     const { data: futureSessions } = await ctx.supabase
       .from("sessions")
-      .select("id")
+      .select("id, sessionDate")
       .eq("scheduleSlotId", slotId)
       .eq("tenantId", ctx.tenantId)
-      .gte("sessionDate", todayStr)
       .eq("status", "scheduled");
-    const toDelete = (futureSessions || []).map((s: any) => s.id);
+    const futureOnly = (futureSessions || []).filter((s: any) => toDateInputValue(s.sessionDate) > todayStr);
+    const toDelete = futureOnly.map((s: any) => s.id);
     if (toDelete.length > 0) {
       await ctx.supabase.from("attendances").delete().in("sessionId", toDelete).eq("tenantId", ctx.tenantId);
       await ctx.supabase.from("sessions").delete().in("id", toDelete).eq("tenantId", ctx.tenantId);

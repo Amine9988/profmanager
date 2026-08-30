@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, RotateCcw, RefreshCw } from "lucide-react";
+import { AlertTriangle, RotateCcw, RefreshCw } from "@/lib/lucide";
 
 interface Props { children: React.ReactNode; }
 interface State { hasError: boolean; error: Error | null; }

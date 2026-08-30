@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { deleteStudent } from "@/server/actions/students";
 import Link from "next/link";
 import { StudentEditDialog } from "@/components/students/student-edit-dialog";
+import { prefetchLevels } from "@/components/shared/level-select";
 import type { GroupOption } from "@/components/students/student-groups-picker";
 import { CardDialog } from "@/components/students/card-dialog";
 import { StudentRecordDialog } from "@/components/students/student-record-dialog";
@@ -12,7 +13,7 @@ import { toast } from "sonner";
 import { useI18n } from "@/lib/i18n";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Trash2, Search, X, Printer } from "lucide-react";
+import { Trash2, Search, X, Printer, Loader2, Pencil } from "@/lib/lucide";
 import { cn } from "@/lib/utils";
 import { drawCardToCanvas } from "@/components/students/card-dialog";
 import { jsPDF } from "jspdf";
@@ -31,36 +32,98 @@ type StudentRow = {
   subscriptionStart: string | null;
   status: string;
   clientType?: string | null;
-  groupStudents: { clientType?: string | null; group: { id: string; name: string } | null }[];
+  groupStudents?: { clientType?: string | null; group: { id: string; name: string } | null }[];
 };
 
-export function StudentsTable({ data, groups = [] }: { data: StudentRow[]; groups?: GroupOption[] }) {
+const PAGE_SIZE = 50;
+
+export function StudentsTable({ groups = [] }: { data?: StudentRow[]; groups?: GroupOption[] }) {
   const { t, direction } = useI18n();
   const router = useRouter();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [search, setSearch] = useState("");
-  const align = direction === "rtl" ? "right" : "left";
-  const PAGE_SIZE = 50;
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [rows, setRows] = useState<StudentRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<StudentRow | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const align = direction === "rtl" ? "right" : "left";
 
-  const filtered = useMemo(() => {
-    return data.filter((s) => {
-      if (search) {
-        const q = search.toLowerCase();
-        const match =
-          s.fullName.toLowerCase().includes(q) ||
-          (s.phone || "").includes(q) ||
-          (s.gradeLevel || "").toLowerCase().includes(q);
-        if (!match) return false;
+  useEffect(() => { prefetchLevels(); }, []);
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(id);
+  }, [search]);
+
+  useEffect(() => { setPage(1); }, [debouncedSearch]);
+
+  const load = useCallback(async () => {
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(PAGE_SIZE),
+        view: "full",
+      });
+      if (debouncedSearch) params.set("q", debouncedSearch);
+      const res = await fetch(`/api/students?${params}`, { signal: ac.signal });
+      if (!res.ok) throw new Error("fetch failed");
+      const json = await res.json();
+      const list = Array.isArray(json) ? json : json.data || [];
+      setRows(list);
+      setTotal(Number(res.headers.get("X-Total-Count") || json.total || list.length));
+    } catch (e: any) {
+      if (e?.name !== "AbortError") {
+        setRows([]);
+        setTotal(0);
       }
-      return true;
-    });
-  }, [data, search]);
+    } finally {
+      if (!ac.signal.aborted) setLoading(false);
+    }
+  }, [page, debouncedSearch]);
 
-  useEffect(() => { setPage(1); }, [search]);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginated = useMemo(() => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [filtered, page]);
-  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [totalPages, page]);
+  useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const reload = () => { load(); };
+    window.addEventListener("students-changed", reload);
+    return () => window.removeEventListener("students-changed", reload);
+  }, [load]);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  function toEditStudent(student: StudentRow) {
+    return {
+      id: student.id,
+      fullName: student.fullName,
+      gradeLevel: student.gradeLevel,
+      schoolName: student.schoolName,
+      phone: student.phone,
+      fatherPhone: student.fatherPhone,
+      email: student.email,
+      address: student.address,
+      notes: student.notes,
+      monthlyFee: student.monthlyFee,
+      subscriptionStart: student.subscriptionStart ? new Date(student.subscriptionStart) : null,
+      clientType: student.clientType ?? null,
+    };
+  }
+
+  function toEnrolledGroups(student: StudentRow): GroupOption[] {
+    return (student.groupStudents || [])
+      .filter((gs) => gs.group)
+      .map((gs) => ({
+        id: gs.group!.id,
+        name: gs.group!.name,
+        clientType: (gs.clientType as "institution" | "teacher" | null) ?? undefined,
+      }));
+  }
 
   function toggleOne(id: string) {
     setSelectedIds((prev) =>
@@ -70,7 +133,7 @@ export function StudentsTable({ data, groups = [] }: { data: StudentRow[]; group
 
   function toggleAll() {
     setSelectedIds(
-      selectedIds.length === filtered.length ? [] : filtered.map((s) => s.id)
+      selectedIds.length === rows.length ? [] : rows.map((s) => s.id)
     );
   }
 
@@ -85,6 +148,7 @@ export function StudentsTable({ data, groups = [] }: { data: StudentRow[]; group
     if (res.ok) {
       toast.success(t("students.bulk_delete_success", { count: selectedIds.length }));
       setSelectedIds([]);
+      load();
       router.refresh();
     } else {
       toast.error(t("common.error"));
@@ -93,16 +157,20 @@ export function StudentsTable({ data, groups = [] }: { data: StudentRow[]; group
 
   async function handleBulkPrint() {
     if (!selectedIds.length) return;
+    if (selectedIds.length > 100) {
+      toast.error("الحد الأقصى للطباعة الجماعية 100 بطاقة في المرة");
+      return;
+    }
     const ids = [...selectedIds];
     const data = await Promise.all(
       ids.map((id) => fetch(`/api/students/${id}/card`).then((r) => r.json()))
     );
     const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
     const perPage = 10;
-    const cols = 2, rows = 5;
+    const cols = 2, rowsN = 5;
     const slotW = 85, slotH = 55;
     const topX = (210 - cols * slotW) / 2;
-    const topY = (297 - rows * slotH) / 2;
+    const topY = (297 - rowsN * slotH) / 2;
 
     for (let i = 0; i < data.length; i++) {
       if (i > 0 && i % perPage === 0) pdf.addPage();
@@ -137,6 +205,7 @@ export function StudentsTable({ data, groups = [] }: { data: StudentRow[]; group
     const res = await deleteStudent(id);
     if (res.success) {
       toast.success(t("students.studentDeleted"));
+      load();
       router.refresh();
     } else {
       toast.error(res.error ?? t("common.error"));
@@ -156,12 +225,13 @@ export function StudentsTable({ data, groups = [] }: { data: StudentRow[]; group
             className="pl-8 h-9 text-sm"
           />
         </div>
+        {loading && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
       </div>
 
       {selectedIds.length > 0 && (
         <div className="flex items-center gap-3 mb-4 px-4 py-3 bg-destructive/5 border border-destructive/20 rounded-xl animate-fade-in">
           <span className="text-sm font-medium text-destructive">
-            {t("students.selected_count", { count: selectedIds.length, total: filtered.length })}
+            {t("students.selected_count", { count: selectedIds.length, total: rows.length })}
           </span>
           <Button size="sm" variant="default" onClick={handleBulkPrint}>
             <Printer className="size-3.5 mr-1" />{t("students.bulk_print")}
@@ -183,7 +253,7 @@ export function StudentsTable({ data, groups = [] }: { data: StudentRow[]; group
                 <th className="w-10 px-3 py-3 text-center">
                   <input
                     type="checkbox"
-                    checked={filtered.length > 0 && selectedIds.length === filtered.length}
+                    checked={rows.length > 0 && selectedIds.length === rows.length}
                     onChange={toggleAll}
                     className="size-4 rounded border-gray-300 text-primary focus:ring-primary/50 cursor-pointer"
                   />
@@ -203,7 +273,7 @@ export function StudentsTable({ data, groups = [] }: { data: StudentRow[]; group
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 && (
+              {!loading && rows.length === 0 && (
                 <tr>
                   <td colSpan={5}>
                     <div className="flex flex-col items-center gap-2 py-12 text-center">
@@ -213,7 +283,7 @@ export function StudentsTable({ data, groups = [] }: { data: StudentRow[]; group
                   </td>
                 </tr>
               )}
-              {paginated.map((student) => (
+              {rows.map((student) => (
                 <tr
                   key={student.id}
                   className={cn(
@@ -242,26 +312,9 @@ export function StudentsTable({ data, groups = [] }: { data: StudentRow[]; group
                   </td>
                   <td className="px-3 py-3">
                     <div className="flex items-center justify-center gap-1">
-                      <StudentEditDialog
-                        allGroups={groups}
-                        enrolledGroups={(student.groupStudents || [])
-                          .filter((gs) => gs.group)
-                          .map((gs) => ({ id: gs.group!.id, name: gs.group!.name, clientType: (gs.clientType as "institution" | "teacher" | null) ?? undefined }))}
-                        student={{
-                          id: student.id,
-                          fullName: student.fullName,
-                          gradeLevel: student.gradeLevel,
-                          schoolName: student.schoolName,
-                          phone: student.phone,
-                          fatherPhone: student.fatherPhone,
-                          email: student.email,
-                          address: student.address,
-                          notes: student.notes,
-                          monthlyFee: student.monthlyFee,
-                          subscriptionStart: student.subscriptionStart ? new Date(student.subscriptionStart) : null,
-                          clientType: student.clientType ?? null,
-                        }}
-                      />
+                      <Button variant="outline" size="sm" onClick={() => setEditing(student)}>
+                        <Pencil className="size-4" /> {t("common.edit")}
+                      </Button>
                       <CardDialog studentId={student.id} />
                       <StudentRecordDialog studentId={student.id} />
                       <Button variant="ghost" size="sm" onClick={() => handleDeleteOne(student.id)} title={t("common.delete")}>
@@ -276,18 +329,30 @@ export function StudentsTable({ data, groups = [] }: { data: StudentRow[]; group
         </div>
       </div>
 
+      {editing && (
+        <StudentEditDialog
+          key={editing.id}
+          open
+          hideTrigger
+          onOpenChange={(v) => { if (!v) setEditing(null); }}
+          allGroups={groups}
+          enrolledGroups={toEnrolledGroups(editing)}
+          student={toEditStudent(editing)}
+        />
+      )}
+
       <div className={cn("flex flex-col sm:flex-row items-center justify-between gap-2 py-3 text-sm text-muted-foreground", align === "right" ? "text-right" : "text-left")}>
         <span>
           {selectedIds.length > 0
-            ? t("students.selected_count", { count: selectedIds.length, total: filtered.length })
-            : t("students.total_students", { count: filtered.length })}
-          {filtered.length > PAGE_SIZE && ` — ${t("common.page") || "Page"} ${page}/${totalPages}`}
+            ? t("students.selected_count", { count: selectedIds.length, total: rows.length })
+            : t("students.total_students", { count: total })}
+          {total > PAGE_SIZE && ` — ${t("common.page") || "Page"} ${page}/${totalPages}`}
         </span>
         {totalPages > 1 && (
           <div className="flex items-center gap-1">
-            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>{t("common.previous") || "السابق"}</Button>
+            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1 || loading}>{t("common.previous") || "السابق"}</Button>
             <span className="px-2 text-xs">{page} / {totalPages}</span>
-            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}>{t("common.next") || "التالي"}</Button>
+            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages || loading}>{t("common.next") || "التالي"}</Button>
           </div>
         )}
       </div>

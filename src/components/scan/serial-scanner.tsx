@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { Cable, PlugZap, Unplug } from "lucide-react";
+import { Cable, PlugZap, Unplug } from "@/lib/lucide";
 import { Button } from "@/components/ui/button";
 
 interface Props {

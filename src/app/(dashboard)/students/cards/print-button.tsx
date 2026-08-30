@@ -1,6 +1,6 @@
 "use client";
 
-import { Printer } from "lucide-react";
+import { Printer } from "@/lib/lucide";
 import { Button } from "@/components/ui/button";
 
 export function PrintButton() {

@@ -1,6 +1,6 @@
 "use client";
 
-import { Printer } from "lucide-react";
+import { Printer } from "@/lib/lucide";
 
 export function StudentPrintButton({ fullName }: { fullName: string }) {
   return (

@@ -2,7 +2,7 @@
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { SearchX } from "lucide-react";
+import { SearchX } from "@/lib/lucide";
 import { useT } from "@/lib/i18n";
 
 export function PageSkeleton() {

@@ -15,7 +15,7 @@ function devOrigins(): string[] {
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  serverExternalPackages: ["sql.js"],
+  serverExternalPackages: ["sql.js", "nodemailer"],
   allowedDevOrigins: devOrigins(),
   turbopack: { root: __dirname },
 };

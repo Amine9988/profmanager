@@ -18,33 +18,58 @@ interface LevelSelectProps {
   placeholder?: string;
 }
 
+let levelsCache: Level[] | null = null;
+let levelsPromise: Promise<Level[]> | null = null;
+
+function loadLevels(): Promise<Level[]> {
+  if (levelsCache) return Promise.resolve(levelsCache);
+  if (!levelsPromise) {
+    levelsPromise = fetch("/api/levels")
+      .then((r) => r.json())
+      .then((data) => {
+        const list = Array.isArray(data) ? data.filter((l: Level) => l.status !== "archived") : [];
+        levelsCache = list;
+        return list;
+      })
+      .catch(() => {
+        levelsPromise = null;
+        return [] as Level[];
+      });
+  }
+  return levelsPromise;
+}
+
+export function prefetchLevels() {
+  void loadLevels();
+}
+
 export function LevelSelect({
   defaultValue,
   name = "level",
   required = false,
   placeholder = "اختر المستوى...",
 }: LevelSelectProps) {
-  const [levels, setLevels] = useState<Level[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [levels, setLevels] = useState<Level[]>(levelsCache ?? []);
+  const [loading, setLoading] = useState(!levelsCache);
   const [value, setValue] = useState(defaultValue ?? "");
 
   useEffect(() => {
-    fetch("/api/levels")
-      .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data)) {
-          setLevels(data.filter((l: Level) => l.status !== "archived"));
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    if (levelsCache) {
+      setLevels(levelsCache);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    loadLevels().then((list) => {
+      if (cancelled) return;
+      setLevels(list);
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // The options load asynchronously, while the stored level (defaultValue) is
-  // known synchronously. Once the list is ready, push that stored value into a
-  // controlled select so the edit form shows the saved level instead of falling
-  // back to the first option or the placeholder. It re-syncs when the dialog is
-  // reused for a different record.
   useEffect(() => {
     if (!loading) setValue(defaultValue ?? "");
   }, [loading, defaultValue]);
@@ -70,7 +95,7 @@ export function LevelSelect({
   if (loading) {
     return (
       <select disabled className={CLASSES} value="" aria-label={placeholder}>
-        <option value="">جاري التحميل...</option>
+        <option value="">{placeholder}</option>
       </select>
     );
   }

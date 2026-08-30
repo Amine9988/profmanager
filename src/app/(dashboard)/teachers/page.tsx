@@ -10,7 +10,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
 } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Trash2, Pencil, X, BookOpenCheck, Wallet } from "lucide-react";
+import { Plus, Trash2, Pencil, X, BookOpenCheck, Wallet } from "@/lib/lucide";
 import { toast } from "sonner";
 
 interface SubjectInfo {
@@ -46,12 +46,14 @@ interface TeachingLogEntry {
 interface DuesSession {
   id: string;
   sessionDate: string;
+  startTime?: string | null;
+  endTime?: string | null;
   groupName: string | null;
   presentCount: number;
   institutionClients?: number;
   teacherClients?: number;
   earned: number;
-  paidStatus?: "paid" | "partial" | "unpaid";
+  paidStatus?: "paid" | "unpaid";
 }
 
 interface DuesData {
@@ -317,7 +319,7 @@ function TeacherFormDialog({ teacher, onClose, onSaved }: {
 }) {
   const t = useT();
   const isEditing = !!teacher;
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(isEditing);
   const [name, setName] = useState([teacher?.firstName, teacher?.lastName].filter(Boolean).join(" ") || "");
   const [phone, setPhone] = useState(teacher?.phone || "");
   const [salaryType, setSalaryType] = useState(teacher?.salaryType || "monthly");
@@ -367,23 +369,23 @@ function TeacherFormDialog({ teacher, onClose, onSaved }: {
     finally { setSaving(false); }
   }
 
-  function handleOpenChange(open: boolean) {
-    setOpen(open);
-      if (!open) {
-        if (!isEditing) {
-          setName("");
-          setPhone("");
-          setSalaryType("monthly");
-          setSalaryAmount("");
-          setSalaryAmountTeacher("");
-          setSubjectIds([]);
-        }
+  function handleOpenChange(next: boolean) {
+    setOpen(next);
+    if (!next) {
+      if (!isEditing) {
+        setName("");
+        setPhone("");
+        setSalaryType("monthly");
+        setSalaryAmount("");
+        setSalaryAmountTeacher("");
+        setSubjectIds([]);
+      }
       onClose?.();
     }
   }
 
   return (
-    <Dialog open={isEditing ? true : open} onOpenChange={isEditing ? undefined : handleOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       {!isEditing && (
         <DialogTrigger asChild>
           <Button size="sm"><Plus className="size-4" /> {t("teachers.add")}</Button>
@@ -455,7 +457,7 @@ function TeacherFormDialog({ teacher, onClose, onSaved }: {
             </div>
           )}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => { if (isEditing) onClose?.(); else setOpen(false); }}>
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               {t("common.cancel")}
             </Button>
             <Button type="submit" disabled={saving}>{saving ? t("common.saving") : t("common.save")}</Button>
@@ -697,32 +699,31 @@ function DuesDialog({ teacher, onClose, onPaid }: { teacher: Teacher; onClose: (
                 data.sessions.map((s) => {
                   const paidCls =
                     s.paidStatus === "paid"
-                      ? "border-green-500/50 bg-green-500/5"
-                      : s.paidStatus === "partial"
-                        ? "border-amber-500/50 bg-amber-500/5"
-                        : "";
+                      ? "border-green-600 bg-green-500/10"
+                      : "border-red-600 bg-red-500/10";
                   const earnedCls =
                     s.paidStatus === "paid"
                       ? "text-green-600 font-semibold"
-                      : s.paidStatus === "partial"
-                        ? "text-amber-600 font-semibold"
-                        : "font-medium";
+                      : "text-red-600 font-semibold";
+                  const timeLabel = [s.startTime, s.endTime].filter(Boolean).join(" – ");
                   return (
                   <Card key={s.id} className={paidCls}>
                     <CardContent className="flex items-center justify-between gap-2 py-2.5">
                       <div>
                         <p className="text-sm font-medium">{s.groupName || "—"}</p>
-                        <p className="text-xs text-muted-foreground">{formatDate(s.sessionDate)}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatDate(s.sessionDate)}{timeLabel ? ` · ${timeLabel}` : ""}
+                        </p>
                       </div>
                       <div className="flex items-center gap-3 text-sm">
-                        {data.perStudent ? (
+                        {data.perStudent && (s.presentCount ?? 0) > 0 ? (
                           <span className="flex flex-col items-end leading-tight">
                             <span className="text-xs text-muted-foreground">{t("teachers.rate_institution_short")}: <span className="font-medium text-foreground">{s.institutionClients ?? 0}</span></span>
                             <span className="text-xs text-muted-foreground">{t("teachers.rate_teacher_short")}: <span className="font-medium text-foreground">{s.teacherClients ?? 0}</span></span>
                           </span>
-                        ) : (
+                        ) : !data.perStudent ? (
                           <span className="text-muted-foreground">{t("teachers.students_present", { count: s.presentCount })}</span>
-                        )}
+                        ) : null}
                         {data.perStudent && <span className={earnedCls}>{formatCurrency(s.earned)}</span>}
                        </div>
                      </CardContent>
@@ -739,7 +740,7 @@ function DuesDialog({ teacher, onClose, onPaid }: { teacher: Teacher; onClose: (
             )}
 
             {data.totals.remaining > 0 && (
-              <div className="rounded-lg bg-amber-500/10 px-3 py-2 text-sm">
+              <div className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-800">
                 {t("teachers.dues_hint", { amount: formatCurrency(data.totals.remaining) })}
               </div>
             )}
@@ -761,7 +762,7 @@ function DuesDialog({ teacher, onClose, onPaid }: { teacher: Teacher; onClose: (
 
 function TotalsBox({ label, value, warn }: { label: string; value: number; warn?: boolean }) {
   return (
-    <div className={`rounded-lg border p-3 ${warn ? "border-amber-300 bg-amber-500/10" : ""}`}>
+    <div className={`rounded-lg border p-3 ${warn ? "border-red-300 bg-red-500/10" : ""}`}>
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="mt-1 text-lg font-bold">{formatCurrency(value)}</p>
     </div>

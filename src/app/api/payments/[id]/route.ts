@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getTenantContext } from "@/lib/auth";
 import { calculateStatus, normalizePayment, resetSessionCreditsOnPaymentDelete } from "@/lib/payments/utils";
 import { moveToTrashPayment } from "@/lib/trash";
+import { emailInvoiceForCreatedPayment } from "@/lib/invoice-email";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -117,7 +118,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       await supabase.from("students").update({ advanceBalance: Math.max(0, currentAdvance + diff) }).eq("id", existing.studentId);
     }
 
-    return NextResponse.json(normalizePayment(updated));
+    const invoiceEmail = newPayment > 0
+      ? await emailInvoiceForCreatedPayment(supabase, tenantId, updated)
+      : undefined;
+
+    return NextResponse.json({ ...normalizePayment(updated), invoiceEmail });
   } catch {
     return NextResponse.json({ error: "Failed to update payment" }, { status: 500 });
   }

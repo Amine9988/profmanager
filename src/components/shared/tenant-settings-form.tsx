@@ -7,11 +7,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useT } from "@/lib/i18n";
-import { Save, Trash2 } from "lucide-react";
+import { Save, Trash2 } from "@/lib/lucide";
 
 type Tenant = {
   name: string;
   schoolPhone?: string;
+  schoolEmail?: string | null;
+  smtpPassword?: string | null;
   schoolLogo?: string | null;
 };
 
@@ -94,6 +96,41 @@ export function TenantSettingsForm({ tenant }: { tenant: Tenant }) {
       <div className="space-y-2">
         <Label htmlFor="schoolPhone">{t("settings.schoolPhone")}</Label>
         <Input id="schoolPhone" name="schoolPhone" defaultValue={tenant.schoolPhone} />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="schoolEmail">{t("settings.schoolEmail")}</Label>
+        <Input
+          id="schoolEmail"
+          name="schoolEmail"
+          type="email"
+          inputMode="email"
+          autoComplete="email"
+          dir="ltr"
+          placeholder={t("students.form.emailPlaceholder")}
+          defaultValue={tenant.schoolEmail ?? ""}
+        />
+      </div>
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Label htmlFor="smtpPassword">{t("settings.smtpPassword")}</Label>
+          <a
+            href="https://myaccount.google.com/apppasswords"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs font-medium text-primary underline-offset-2 hover:underline"
+          >
+            {t("settings.smtpPasswordLink")}
+          </a>
+        </div>
+        <Input
+          id="smtpPassword"
+          name="smtpPassword"
+          type="password"
+          autoComplete="new-password"
+          dir="ltr"
+          defaultValue={tenant.smtpPassword ?? ""}
+        />
+        <p className="text-xs text-muted-foreground">{t("settings.smtpHint")}</p>
       </div>
       <div className="space-y-2">
         <Label htmlFor="schoolLogoFile">{t("settings.schoolLogo")}</Label>

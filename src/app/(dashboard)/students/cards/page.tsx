@@ -3,20 +3,6 @@ import { StudentCardsClient } from "@/components/student-cards/page-client";
 
 export const dynamic = "force-dynamic";
 
-async function getStudents() {
-  const { supabase, tenantId } = await getTenantContext();
-  const { data } = await supabase
-    .from("students")
-    .select("id, fullName, gradeLevel, schoolName, phone, address")
-    .eq("tenantId", tenantId)
-    .eq("status", "active")
-    .order("fullName", { ascending: true });
-  return (data || []).map((s: any) => ({
-    ...s,
-    registrationNumber: "",
-  }));
-}
-
 async function getTenant() {
   const { supabase, tenantId } = await getTenantContext();
   const { data } = await supabase
@@ -39,15 +25,14 @@ async function getLevels() {
 }
 
 export default async function StudentCardsPage() {
-  const [students, tenant, levels] = await Promise.all([getStudents(), getTenant(), getLevels()]);
-
-  const distinctLevels = [...new Set(students.map((s: any) => s.gradeLevel).filter(Boolean))] as string[];
+  // Do NOT preload all students — client searches via /api/students
+  const [tenant, levels] = await Promise.all([getTenant(), getLevels()]);
 
   return (
     <StudentCardsClient
-      students={students}
+      students={[]}
       tenant={tenant}
-      levels={[...new Set([...levels, ...distinctLevels])]}
+      levels={levels}
     />
   );
 }

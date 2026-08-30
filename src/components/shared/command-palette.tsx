@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { searchStudents } from "@/server/actions/search";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Search, Users, Phone, BookOpen, Command } from "lucide-react";
+import { Search, Users, Phone, BookOpen, Command } from "@/lib/lucide";
 import { useT } from "@/lib/i18n";
 
 type SearchResult = {

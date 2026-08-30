@@ -5,7 +5,7 @@ import { useT } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Lock } from "lucide-react";
+import { Lock } from "@/lib/lucide";
 import { toast } from "sonner";
 
 export function PasswordConfirmDialog({

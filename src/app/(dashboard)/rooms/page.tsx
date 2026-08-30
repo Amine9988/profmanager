@@ -9,7 +9,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { DoorOpen, Plus, Pencil, Trash2 } from "lucide-react";
+import { DoorOpen, Plus, Pencil, Trash2 } from "@/lib/lucide";
 import { toast } from "sonner";
 
 interface Room {

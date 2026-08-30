@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { GroupEditDialog } from "@/components/groups/group-edit-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Trash2, Users, Clock, Tag } from "lucide-react";
+import { Trash2, Users, Clock, Tag } from "@/lib/lucide";
 import { deleteGroup } from "@/server/actions/groups";
 import { formatCurrency } from "@/lib/utils";
 import { useT } from "@/lib/i18n";

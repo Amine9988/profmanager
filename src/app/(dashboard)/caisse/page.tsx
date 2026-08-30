@@ -10,7 +10,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
 } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
-import { Plus, ArrowUpRight, ArrowDownRight, Wallet, RefreshCw, Pencil, Trash2, Lock, Eye, EyeOff, Search, ChevronLeft, ChevronRight, FileText } from "lucide-react";
+import { Plus, ArrowUpRight, ArrowDownRight, Wallet, RefreshCw, Pencil, Trash2, Lock, Eye, EyeOff, Search, ChevronLeft, ChevronRight, FileText } from "@/lib/lucide";
 import { toast } from "sonner";
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas-pro";

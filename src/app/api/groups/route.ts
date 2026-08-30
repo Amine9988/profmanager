@@ -9,10 +9,11 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get("status");
     const schedule = searchParams.get("schedule");
     const withStudents = searchParams.get("withStudents") === "true";
+    const groupId = searchParams.get("id") || searchParams.get("groupId");
 
-    const selectCols = withStudents
-      ? "id, name, level, maxCapacity, status, pricePerSession, priceType, roomId, expiresAt, group_students(*, students(id, fullName))"
-      : "id, name, level, maxCapacity, status, pricePerSession, priceType, roomId, expiresAt";
+    // Never embed all enrollments for every group — that freezes at scale.
+    // Callers must pass id/groupId to load one roster, or omit withStudents.
+    const selectCols = "id, name, level, maxCapacity, status, pricePerSession, priceType, roomId, expiresAt";
 
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
     const limit = Math.min(500, Math.max(1, parseInt(searchParams.get("limit") || "100", 10) || 100));
@@ -25,11 +26,17 @@ export async function GET(req: NextRequest) {
       .eq("tenantId", tenantId)
       .order("name");
 
+    if (groupId) query = query.eq("id", groupId);
     if (status) query = query.eq("status", status);
     if (hasPagination) query = (query as any).range(offset, offset + limit - 1);
     else query = (query as any).limit(200);
 
-    const { data: groups } = await query;
+    let { data: groups, error: groupsError } = await query;
+    if (groupsError || !groups) {
+      console.error("[api/groups GET]", groupsError);
+      const fallback = await supabase.from("groups").select("id, name").eq("tenantId", tenantId);
+      groups = fallback.data || [];
+    }
 
     if (schedule === "true" && groups) {
       const { data: slots } = await supabase
@@ -45,6 +52,22 @@ export async function GET(req: NextRequest) {
     }
 
     if (withStudents && groups) {
+      // Only load roster for the requested group (or first group if id given).
+      // Refuse unbounded withStudents without id — return empty student arrays.
+      const targetIds = groupId ? [groupId] : [];
+      const rosterByGroup = new Map<string, { id: string; fullName: string }[]>();
+      if (targetIds.length > 0) {
+        const { data: gs } = await supabase
+          .from("group_students")
+          .select("groupId, status, students(id, fullName)")
+          .eq("tenantId", tenantId)
+          .eq("groupId", targetIds[0])
+          .eq("status", "active");
+        const list = (gs || [])
+          .filter((row: any) => row.students)
+          .map((row: any) => ({ id: row.students.id, fullName: row.students.fullName }));
+        rosterByGroup.set(targetIds[0], list);
+      }
       return NextResponse.json(
         groups.map((g: any) => ({
           id: g.id,
@@ -52,9 +75,7 @@ export async function GET(req: NextRequest) {
           level: g.level,
           pricePerSession: g.pricePerSession,
           priceType: g.priceType,
-          students: ((g.group_students || []))
-            .filter((gs: any) => gs.status === "active" && gs.students != null)
-            .map((gs: any) => ({ id: gs.students.id, fullName: gs.students.fullName })),
+          students: rosterByGroup.get(g.id) || [],
         }))
       );
     }
@@ -90,14 +111,8 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date().toISOString();
-    let expiresAt: string | null = body.expiresAt || null;
-    if (!expiresAt) {
-      try {
-        const { getSchoolYearSettings } = await import("@/server/actions/sessions");
-        const sy = await getSchoolYearSettings();
-        expiresAt = sy?.schoolYearEnd || null;
-      } catch {}
-    }
+    // null expiresAt = follow school year end (do not bake a fixed copy)
+    const expiresAt: string | null = body.expiresAt ? String(body.expiresAt).slice(0, 10) : null;
     const { data: group, error } = await supabase
       .from("groups")
       .insert({
@@ -169,27 +184,30 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    let patchExpiresAt: string | null = body.expiresAt ?? null;
-    if (body.expiresAt === "" || body.expiresAt === undefined) {
-      try {
-        const { getSchoolYearSettings } = await import("@/server/actions/sessions");
-        const sy = await getSchoolYearSettings();
-        patchExpiresAt = sy?.schoolYearEnd || null;
-      } catch {}
+    let patchExpiresAt: string | null = null;
+    if (body.expiresAt !== undefined) {
+      const raw = body.expiresAt;
+      patchExpiresAt = raw ? String(raw).slice(0, 10) : null;
+    } else {
+      // Field omitted → leave existing; only clear when explicitly empty string
+      patchExpiresAt = undefined as unknown as null;
+    }
+    const updatePayload: Record<string, unknown> = {
+      name: body.name,
+      subjectId: body.subjectId || null,
+      level: body.level || null,
+      maxCapacity: body.maxCapacity || 10,
+      pricePerSession: body.pricePerSession || null,
+      priceType: body.priceType || "per_session",
+      roomId: newRoomId,
+      updatedAt: new Date().toISOString(),
+    };
+    if (body.expiresAt !== undefined) {
+      updatePayload.expiresAt = patchExpiresAt || null;
     }
     const { data, error } = await supabase
       .from("groups")
-      .update({
-        name: body.name,
-        subjectId: body.subjectId || null,
-        level: body.level || null,
-        maxCapacity: body.maxCapacity || 10,
-        pricePerSession: body.pricePerSession || null,
-        priceType: body.priceType || "per_session",
-        roomId: newRoomId,
-        expiresAt: patchExpiresAt || null,
-        updatedAt: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq("id", id)
       .eq("tenantId", tenantId)
       .select()

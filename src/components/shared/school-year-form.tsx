@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, CheckCircle2 } from "lucide-react";
+import { Loader2, CheckCircle2 } from "@/lib/lucide";
 
 export function SchoolYearForm({ initialSettings }: { initialSettings?: { schoolYearStart?: string | null; schoolYearEnd?: string | null } }) {
   const [schoolYearStart, setSchoolYearStart] = useState(
@@ -58,6 +58,9 @@ export function SchoolYearForm({ initialSettings }: { initialSettings?: { school
           value={schoolYearEnd}
           onChange={(e) => setSchoolYearEnd(e.target.value)}
         />
+        <p className="text-xs text-muted-foreground">
+          تُنشأ حصص الحضور حتى هذا اليوم شاملًا. المجموعات بلا تاريخ نهاية خاص تتبع هذا التاريخ تلقائيًا.
+        </p>
       </div>
 
       <Button onClick={handleSave} disabled={saving} variant={saved ? "outline" : "default"}>

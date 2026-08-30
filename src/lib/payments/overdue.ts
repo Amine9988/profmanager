@@ -34,11 +34,13 @@ export async function getOverdueSubscriptionsData(): Promise<OverdueSubscription
 
   const { data: allPayments } = await supabase
     .from("payments")
-    .select("*, students(fullName, phone)")
+    .select("id, studentId, groupId, amountDue, amountPaid, month, students(fullName, phone)")
     .eq("tenantId", tenantId)
-    .eq("month", firstOfCurrentMonth);
+    .eq("month", firstOfCurrentMonth)
+    .limit(5000);
 
   const byStudent = new Map<string, OverdueSubscription>();
+  const overdueGroupIdsByStudent = new Map<string, Set<string>>();
 
   for (const p of allPayments || []) {
     const amountDue = Number(p.amountDue);
@@ -49,17 +51,17 @@ export async function getOverdueSubscriptionsData(): Promise<OverdueSubscription
     const monthDate = new Date(p.month);
     const daysOverdue = Math.ceil((now.getTime() - monthDate.getTime()) / (1000 * 60 * 60 * 24));
 
+    if (p.groupId) {
+      const set = overdueGroupIdsByStudent.get(p.studentId) || new Set<string>();
+      set.add(p.groupId);
+      overdueGroupIdsByStudent.set(p.studentId, set);
+    }
+
     if (existing) {
       existing.monthlyAmount += amountDue;
       existing.amountPaid += amountPaid;
-      existing.remainingBalance += (amountDue - amountPaid);
+      existing.remainingBalance += amountDue - amountPaid;
     } else {
-      const { data: gs } = await supabase
-        .from("group_students")
-        .select("groups(name)")
-        .eq("studentId", p.studentId)
-        .eq("status", "active");
-
       byStudent.set(p.studentId, {
         id: p.studentId,
         studentId: p.studentId,
@@ -69,10 +71,25 @@ export async function getOverdueSubscriptionsData(): Promise<OverdueSubscription
         amountPaid,
         remainingBalance: amountDue - amountPaid,
         daysOverdue,
-        groups: (gs || []).map((g: any) => g.groups?.name ?? "?"),
+        groups: [],
         endDate: monthDate,
         month: p.month,
       });
+    }
+  }
+
+  const overdueGroupIds = [...new Set([...overdueGroupIdsByStudent.values()].flatMap((s) => [...s]))];
+  if (overdueGroupIds.length > 0) {
+    const { data: groupRows } = await supabase
+      .from("groups")
+      .select("id, name")
+      .in("id", overdueGroupIds);
+    const nameById = new Map((groupRows || []).map((g: any) => [g.id, g.name]));
+    for (const [sid, sub] of byStudent) {
+      const ids = overdueGroupIdsByStudent.get(sid);
+      sub.groups = ids
+        ? [...ids].map((id) => nameById.get(id)).filter((n): n is string => Boolean(n))
+        : [];
     }
   }
 

@@ -15,9 +15,10 @@ interface StudentCardsClientProps {
   levels: string[];
 }
 
-export function StudentCardsClient({ students, tenant, levels }: StudentCardsClientProps) {
+export function StudentCardsClient({ tenant, levels }: StudentCardsClientProps) {
   const [template, setTemplate] = useState<CardTemplate>("classic");
-  const [selectedIds, setSelectedIds] = useState<string[]>(() => students.map((s) => s.id));
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedStudents, setSelectedStudents] = useState<StudentCardData[]>([]);
   const [cardFormat, setCardFormatState] = useState<CardFormat>("url");
   const [, setLanReady] = useState(false);
 
@@ -37,12 +38,10 @@ export function StudentCardsClient({ students, tenant, levels }: StudentCardsCli
   }, []);
   const cardRefMap = useRef(new Map<string, HTMLDivElement | null>());
 
-  const selectedStudents = useMemo(
-    () => students.filter((s) => selectedIds.includes(s.id)),
-    [students, selectedIds]
-  );
-
   const cardPx = { width: Math.round(CARD_A7.width * 3.779), height: Math.round(CARD_A7.height * 3.779) };
+
+  // Preview only first 20 in UI; print root keeps all selected (capped at 100 by selector)
+  const previewStudents = useMemo(() => selectedStudents.slice(0, 20), [selectedStudents]);
 
   return (
     <div dir="rtl" className="flex flex-col gap-5">
@@ -88,14 +87,18 @@ export function StudentCardsClient({ students, tenant, levels }: StudentCardsCli
       </div>
 
       <StudentSelector
-        students={students}
+        students={[]}
         selectedIds={selectedIds}
-        onSelectionChange={setSelectedIds}
+        selectedStudents={selectedStudents}
+        onSelectionChange={(ids, list) => {
+          setSelectedIds(ids);
+          setSelectedStudents(list);
+        }}
         levels={levels}
       />
 
       <CardPreview
-        students={selectedStudents}
+        students={previewStudents}
         tenant={tenant}
         template={template}
         cardSize={CARD_A7}

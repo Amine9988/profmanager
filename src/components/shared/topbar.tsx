@@ -5,7 +5,7 @@ import { memo } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { LanguageSwitcher } from "@/components/shared/language-switcher";
-import { LogOut } from "lucide-react";
+import { LogOut } from "@/lib/lucide";
 import { initials } from "@/lib/utils";
 import { logout } from "@/server/actions/auth";
 

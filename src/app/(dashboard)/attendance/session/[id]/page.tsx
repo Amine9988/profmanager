@@ -6,7 +6,7 @@ import { AttendanceMarker } from "@/components/attendance/attendance-marker";
 import { CancelSessionButton } from "@/components/attendance/cancel-session-button";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowLeft, ArrowRight } from "@/lib/lucide";
 import { formatDate } from "@/lib/utils";
 import { getT, getInitialLocale, getDirection, type Locale } from "@/lib/i18n";
 

@@ -44,37 +44,57 @@ export async function checkAbsenceAlerts() {
   const t = await getT();
   const { tenantId, supabase } = await getTenantContext();
 
-  const { data: students } = await supabase.from("students").select("id, fullName").eq("tenantId", tenantId).eq("status", "active");
+  // Scale-safe: scan recent attendance rows only (not every student × N+1).
+  const { data: recent } = await supabase
+    .from("attendances")
+    .select("studentId, status, markedAt, students(id, fullName), sessions(sessionDate)")
+    .eq("tenantId", tenantId)
+    .order("markedAt", { ascending: false })
+    .limit(3000);
 
-  for (const student of students || []) {
-    const { data: lastThree } = await supabase
-      .from("attendances")
-      .select("status, sessions(sessionDate)")
-      .eq("studentId", student.id)
-      .eq("tenantId", tenantId)
-      .order("sessions.sessionDate", { ascending: false })
-      .limit(3);
+  if (!recent || recent.length === 0) return;
 
-    if (!lastThree || lastThree.length < 3) continue;
-    if (lastThree.every((a) => a.status === "absent")) {
-      const { data: existing } = await supabase
-        .from("notifications")
-        .select("id")
-        .eq("tenantId", tenantId)
-        .eq("type", "consecutive_absences")
-        .gte("createdAt", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
-        .maybeSingle();
+  type Row = { studentId: string; status: string; sessionDate: string; fullName: string };
+  const byStudent = new Map<string, Row[]>();
+  for (const a of recent as any[]) {
+    const sid = a.studentId;
+    if (!sid) continue;
+    const list = byStudent.get(sid) || [];
+    if (list.length >= 3) continue;
+    list.push({
+      studentId: sid,
+      status: a.status,
+      sessionDate: a.sessions?.sessionDate || a.markedAt || "",
+      fullName: a.students?.fullName || "",
+    });
+    byStudent.set(sid, list);
+  }
 
-      if (!existing) {
-        await supabase.from("notifications").insert({
-          id: randomUUID(),
-          tenantId: tenantId,
-          type: "consecutive_absences",
-          title: t("notifications.repeated_absences_title"),
-          message: t("notifications.repeated_absences_msg", { student: student.fullName }),
-        });
-      }
-    }
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: existingNotifs } = await supabase
+    .from("notifications")
+    .select("id, message")
+    .eq("tenantId", tenantId)
+    .eq("type", "consecutive_absences")
+    .gte("createdAt", weekAgo);
+
+  const existingMsgs = new Set((existingNotifs || []).map((n: any) => n.message));
+
+  for (const [, rows] of byStudent) {
+    if (rows.length < 3) continue;
+    if (!rows.every((r) => r.status === "absent")) continue;
+    const fullName = rows[0].fullName;
+    if (!fullName) continue;
+    const message = t("notifications.repeated_absences_msg", { student: fullName });
+    if (existingMsgs.has(message)) continue;
+    await supabase.from("notifications").insert({
+      id: randomUUID(),
+      tenantId,
+      type: "consecutive_absences",
+      title: t("notifications.repeated_absences_title"),
+      message,
+    });
+    existingMsgs.add(message);
   }
 }
 

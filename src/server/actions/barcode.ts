@@ -5,12 +5,13 @@ import { getTenantContext, requirePermission } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import type { ActionResult } from "./students";
 import { repairStudentId } from "@/lib/student-qr";
-import { consumeExpiredSessionCredits } from "./attendance";
+import { autoMarkAbsentForPastSessions, consumeExpiredSessionCredits, scheduleAttendanceMaintenance } from "./attendance";
 import { sessionEndTimestamp } from "@/lib/session-time";
 
 export interface GroupCredit {
   groupId: string;
   groupName: string;
+  roomName: string | null;
   color: string | null;
   sessionsIncluded: number | null;
   consumedSessions: number;
@@ -32,6 +33,7 @@ export interface BarcodeSummary {
     sessionId: string;
     groupId: string;
     groupName: string;
+    roomName: string | null;
     color: string | null;
     startTime: string | null;
     endTime: string | null;
@@ -47,10 +49,12 @@ export async function getBarcodeSummary(studentId: string): Promise<BarcodeSumma
   // before hitting the DB.
   const id = repairStudentId(rawId);
 
+  await autoMarkAbsentForPastSessions();
   await consumeExpiredSessionCredits();
+  void scheduleAttendanceMaintenance();
 
   const baseSelect =
-    "id, fullName, gradeLevel, monthlyFee, advanceBalance, payments(*), group_students(*, groups(id, name, sessionsIncluded, color)), attendances(*, sessions(id, sessionDate, startTime, endTime))";
+    "id, fullName, gradeLevel, monthlyFee, advanceBalance, group_students(status, consumedSessions, groups(id, name, sessionsIncluded, color, roomId))";
 
   let { data: student } = await supabase
     .from("students")
@@ -104,34 +108,54 @@ export async function getBarcodeSummary(studentId: string): Promise<BarcodeSumma
 
   if (!student) return null;
 
-  const totalDue = (student.payments || []).reduce((s: number, p: any) => s + Number(p.amountDue), 0);
-  const totalPaid = (student.payments || []).reduce((s: number, p: any) => s + Number(p.amountPaid), 0);
+  const [{ data: paymentsData }, { data: todaySessionsData }, { data: roomsData }] = await Promise.all([
+    supabase
+      .from("payments")
+      .select("id, month, amountDue, amountPaid, paidAt, createdAt, groupId")
+      .eq("studentId", student.id)
+      .eq("tenantId", tenantId)
+      .order("createdAt", { ascending: false })
+      .limit(36),
+    supabase
+      .from("sessions")
+      .select("id, groupId, sessionDate, startTime, endTime, groups(id, name, color, roomId)")
+      .eq("tenantId", tenantId)
+      .eq("sessionDate", (() => {
+        const n = new Date();
+        return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+      })())
+      .neq("status", "cancelled"),
+    supabase.from("rooms").select("id, name").eq("tenantId", tenantId),
+  ]);
+  const roomById = Object.fromEntries((roomsData || []).map((r: any) => [r.id, r.name]));
+
+  const payments = (paymentsData || []) as any[];
+  const totalDue = payments.reduce((s: number, p: any) => s + Number(p.amountDue), 0);
+  const totalPaid = payments.reduce((s: number, p: any) => s + Number(p.amountPaid), 0);
   const currentDebt = Math.max(totalDue - totalPaid, 0);
 
-  const payments = (student.payments || []) as any[];
-  payments.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  const lastPayment = payments.length > 0 && Number(payments[0].amountPaid) > 0
+  const lastPaid = payments.find((p: any) => Number(p.amountPaid) > 0);
+  const lastPayment = lastPaid
     ? {
-        month: payments[0].month,
-        amountPaid: Number(payments[0].amountPaid),
-        paidAt: payments[0].paidAt,
-        date: payments[0].paidAt || payments[0].createdAt || null,
+        month: lastPaid.month,
+        amountPaid: Number(lastPaid.amountPaid),
+        paidAt: lastPaid.paidAt,
+        date: lastPaid.paidAt || lastPaid.createdAt || null,
       }
     : null;
 
-  const now = new Date();
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-
   const activeGroups = ((student as any).group_students || []).filter((gs: any) => gs.status === "active");
+  const activeGroupIds = new Set(activeGroups.map((gs: any) => gs.groups?.id).filter(Boolean));
 
   const groupCredits: GroupCredit[] = activeGroups
     .filter((gs: any) => gs.groups)
     .map((gs: any) => {
       const sessionsIncluded = gs.groups.sessionsIncluded != null ? Number(gs.groups.sessionsIncluded) : null;
-      const paidCount = (payments || []).filter((p: any) => p.groupId === gs.groups.id && Number(p.amountPaid) > 0).length;
+      const paidCount = payments.filter((p: any) => p.groupId === gs.groups.id && Number(p.amountPaid) > 0).length;
       return {
         groupId: gs.groups.id,
         groupName: gs.groups.name,
+        roomName: gs.groups.roomId ? roomById[gs.groups.roomId] || null : null,
         color: gs.groups.color || null,
         sessionsIncluded,
         consumedSessions: gs.consumedSessions != null ? Number(gs.consumedSessions) : 0,
@@ -139,46 +163,35 @@ export async function getBarcodeSummary(studentId: string): Promise<BarcodeSumma
       };
     });
 
-  const todaySessions: BarcodeSummary["todaySessions"] = [];
-
-  for (const gs of activeGroups) {
-    const group = gs.groups;
-    if (!group) continue;
-    const { data: sessions } = await supabase
-      .from("sessions")
-      .select("id, sessionDate, startTime, endTime")
-      .eq("groupId", group.id)
-      .eq("sessionDate", todayStr)
-      .neq("status", "cancelled");
-
-    for (const sess of sessions || []) {
-      const { data: att } = await supabase
-        .from("attendances")
-        .select("status")
-        .eq("sessionId", sess.id)
-        .eq("studentId", studentId)
-        .maybeSingle();
-
-      // A session whose real end time has passed and was never marked shows as
-      // absent (mirrors autoMarkAbsentForPastSessions) instead of offering a
-      // "mark present" button the student could no longer attend.
-      let status = att?.status || null;
-      if (!status) {
-        const end = sessionEndTimestamp(sess);
-        if (end !== null && end < Date.now()) status = "absent";
-      }
-
-      todaySessions.push({
-        sessionId: sess.id,
-        groupId: group.id,
-        groupName: group.name,
-        color: group.color || null,
-        startTime: sess.startTime,
-        endTime: sess.endTime,
-        attendanceStatus: status,
-      });
-    }
+  const todayForStudent = (todaySessionsData || []).filter((s: any) => activeGroupIds.has(s.groupId));
+  const todaySessionIds = todayForStudent.map((s: any) => s.id);
+  const attBySession = new Map<string, string>();
+  if (todaySessionIds.length > 0) {
+    const { data: atts } = await supabase
+      .from("attendances")
+      .select("sessionId, status")
+      .eq("studentId", student.id)
+      .in("sessionId", todaySessionIds);
+    for (const a of atts || []) attBySession.set(a.sessionId, a.status);
   }
+
+  const todaySessions: BarcodeSummary["todaySessions"] = todayForStudent.map((sess: any) => {
+    let status = attBySession.get(sess.id) || null;
+    if (!status) {
+      const end = sessionEndTimestamp(sess);
+      if (end !== null && end < Date.now()) status = "absent";
+    }
+    return {
+      sessionId: sess.id,
+      groupId: sess.groupId,
+      groupName: sess.groups?.name || "",
+      roomName: sess.groups?.roomId ? roomById[sess.groups.roomId] || null : null,
+      color: sess.groups?.color || null,
+      startTime: sess.startTime,
+      endTime: sess.endTime,
+      attendanceStatus: status,
+    };
+  });
 
   todaySessions.sort((a, b) => (a.startTime || "").localeCompare(b.startTime || ""));
 
@@ -246,6 +259,7 @@ export async function markAttendanceByBarcode(
 
     if (error) return { error: String(error) };
 
+    await consumeExpiredSessionCredits();
     revalidatePath("/", "layout");
     return { success: true };
   } catch (e: any) {

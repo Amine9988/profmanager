@@ -1,6 +1,6 @@
 "use client";
 
-import { User, ClipboardCheck, FileText, DollarSign } from "lucide-react";
+import { User, ClipboardCheck, FileText, DollarSign } from "@/lib/lucide";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -58,6 +58,7 @@ export function SummaryView({ summary, attView, attendanceLoading, onMarkAttenda
                       <span className="flex items-center gap-2 text-sm font-medium">
                         <span className="size-2.5 rounded-full shrink-0" style={{ background: c.color || "#888" }} />
                         {c.groupName}
+                        {c.roomName ? <span className="font-normal text-muted-foreground"> · {c.roomName}</span> : null}
                       </span>
                       {d.state === "counter" ? (
                         <span className={`text-sm font-bold ${d.exhausted ? "text-destructive" : "text-success"}`}>
@@ -96,6 +97,7 @@ export function SummaryView({ summary, attView, attendanceLoading, onMarkAttenda
                     <p className="flex items-center gap-2 text-sm font-medium">
                       <span className="size-2.5 rounded-full shrink-0" style={{ background: sess.color || "#888" }} />
                       {sess.groupName}
+                      {sess.roomName ? <span className="font-normal text-muted-foreground"> · {sess.roomName}</span> : null}
                     </p>
                     <p className="text-[11px] text-muted-foreground">
                       {sess.startTime || "?"} - {sess.endTime || "?"}
@@ -162,6 +164,11 @@ export function SummaryView({ summary, attView, attendanceLoading, onMarkAttenda
                     <p className="flex items-center gap-2 text-sm font-medium">
                       <span className="size-2.5 rounded-full shrink-0" style={{ background: sess.group?.color || sess.group?.subjects?.color || "#888" }} />
                       {sess.group?.name || sess.group?.subjects?.name || "مجموعة"}
+                      {attView.roomById[sess.group?.roomId || sess.roomId] ? (
+                        <span className="font-normal text-muted-foreground">
+                          {" "}· {attView.roomById[sess.group?.roomId || sess.roomId]}
+                        </span>
+                      ) : null}
                     </p>
                     <p className="text-[11px] text-muted-foreground">
                       {new Date(sess.sessionDate + "T00:00:00").toLocaleDateString("ar-DZ", {
@@ -170,7 +177,6 @@ export function SummaryView({ summary, attView, attendanceLoading, onMarkAttenda
                         month: "long",
                       })}{" "}
                       • {sess.startTime} - {sess.endTime}
-                      {attView.roomById[sess.roomId] ? ` • ${attView.roomById[sess.roomId]}` : ""}
                     </p>
                   </div>
                   {sess.attendanceStatus ? (

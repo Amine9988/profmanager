@@ -16,7 +16,7 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, DoorOpen, Users, GraduationCap, CalendarClock, X } from "lucide-react";
+import { Plus, DoorOpen, Users, GraduationCap, CalendarClock, X } from "@/lib/lucide";
 import { toast } from "sonner";
 import { LevelSelect } from "@/components/shared/level-select";
 import { useT } from "@/lib/i18n";
@@ -183,7 +183,7 @@ export function GroupCreateDialog({ subjects, rooms }: { subjects: Subject[]; ro
                   className="flex h-9 w-full min-w-0 rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm transition-all duration-200 focus-visible:border-ring focus-visible:ring-ring/40 focus-visible:ring-[3px] focus-visible:shadow-md outline-none">
                   <option value="">{t("groups.room_none")}</option>
                   {rooms.map((r) => (
-                    <option key={r.id} value={r.id}>{r.name} ({r.code})</option>
+                    <option key={r.id} value={r.id}>{r.name}</option>
                   ))}
                 </select>
                 <input type="hidden" name="roomId" value={roomId} />

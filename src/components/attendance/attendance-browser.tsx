@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { ChevronRight, CalendarCheck, Users, Printer, FileText } from "lucide-react";
+import { ChevronRight, CalendarCheck, Users, Printer, FileText } from "@/lib/lucide";
 import { formatDate } from "@/lib/utils";
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas-pro";

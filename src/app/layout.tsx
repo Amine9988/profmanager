@@ -1,6 +1,7 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { LanBaseProvider } from "@/components/lan-base-provider";
+import { DialogCleanup } from "@/components/shared/dialog-cleanup";
 import { getInitialLocale, getT, getDirection } from "@/lib/i18n";
 import type { Locale } from "@/lib/i18n";
 import "./globals.css";
@@ -55,6 +56,7 @@ export default async function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <LanBaseProvider />
+        <DialogCleanup />
         {children}
         <Toaster position="top-center" richColors />
       </body>

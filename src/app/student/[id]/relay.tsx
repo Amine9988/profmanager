@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, X } from "lucide-react";
+import { CheckCircle2, X } from "@/lib/lucide";
 
 export function StudentRelay({ fullName }: { fullName: string }) {
   const [visible, setVisible] = useState(false);

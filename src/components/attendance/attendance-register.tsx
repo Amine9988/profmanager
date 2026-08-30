@@ -6,7 +6,7 @@ import { getAttendanceRegister } from "@/server/actions/attendance";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { CalendarCheck, CalendarX2, ChevronLeft, Users } from "lucide-react";
+import { CalendarCheck, CalendarX2, ChevronLeft, Users } from "@/lib/lucide";
 import { cn, formatDate, initials } from "@/lib/utils";
 
 interface RegisterGroup {

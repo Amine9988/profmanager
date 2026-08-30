@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getTenantContext } from "@/lib/auth";
 import { calculateStatus, normalizePayment, adjustSessionCredits } from "@/lib/payments/utils";
 import { getOverdueSubscriptionsData } from "@/lib/payments/overdue";
+import { emailInvoiceForCreatedPayment } from "@/lib/invoice-email";
 
 export async function GET(req: NextRequest) {
   try {
@@ -20,6 +21,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(data);
     }
 
+    if (aggregate === "counts") {
+      const { paymentStatusCounts } = await import("@/lib/db/aggregates");
+      const now = new Date();
+      const firstOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+      const counts = await paymentStatusCounts(tenantId, firstOfMonth);
+      return NextResponse.json(counts);
+    }
+
     const firstOfMonth = `${year}-${String(month).padStart(2, "0")}-01`;
     const pageParam = searchParams.get("page");
     const limitParam = searchParams.get("limit");
@@ -33,7 +42,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabase
       .from("payments")
-      .select("*, students(id, fullName, monthlyFee, group_students(*, groups(name)))")
+      .select("*, students(id, fullName, monthlyFee)")
       .eq("tenantId", tenantId)
       .order("month", { ascending: false })
       .order("createdAt", { ascending: false });
@@ -61,16 +70,27 @@ export async function GET(req: NextRequest) {
       const computedStatus = calculateStatus(Number(norm.amountDue), Number(norm.amountPaid), refDate);
       return {
         ...norm,
+        groupId: p.groupId ?? norm.groupId ?? null,
+        groupName: "",
         student: {
           id: p.students?.id,
           fullName: p.students?.fullName,
           monthlyFee: p.students?.monthlyFee,
-          groupStudents: p.students?.group_students,
+          groupStudents: [],
         },
         students: undefined,
         status: computedStatus,
       };
     });
+
+    const groupIds = [...new Set(merged.map((p: any) => p.groupId).filter(Boolean))];
+    if (groupIds.length > 0) {
+      const { data: groupRows } = await supabase.from("groups").select("id, name").in("id", groupIds);
+      const nameById = new Map((groupRows || []).map((g: any) => [g.id, g.name]));
+      for (const p of merged) {
+        p.groupName = p.groupId ? nameById.get(p.groupId) || "" : "";
+      }
+    }
 
     if (studentId) {
       return NextResponse.json(merged.filter((p: any) => p.studentId === studentId));
@@ -112,7 +132,8 @@ export async function POST(req: NextRequest) {
         .eq("id", groupId)
         .eq("tenantId", tenantId)
         .maybeSingle();
-      if (group?.pricePerSession) amountDue = Number(group.pricePerSession);
+      const groupPrice = Number(group?.pricePerSession);
+      if (Number.isFinite(groupPrice) && groupPrice > 0) amountDue = groupPrice;
       sessionsIncluded = group?.sessionsIncluded ? Number(group.sessionsIncluded) : null;
 
       // Percentage discount applies to THIS payment's due only.
@@ -124,7 +145,8 @@ export async function POST(req: NextRequest) {
         .eq("id", studentId)
         .eq("tenantId", tenantId)
         .maybeSingle();
-      if (student?.monthlyFee) amountDue = Number(student.monthlyFee);
+      const fee = Number(student?.monthlyFee);
+      if (Number.isFinite(fee) && fee > 0) amountDue = fee;
     }
 
 // Each payment is its own row: no monthly merge and no cap per month —
@@ -206,7 +228,11 @@ export async function POST(req: NextRequest) {
       delta: 1,
     });
 
-    return NextResponse.json(normalizePayment(payment), { status: 201 });
+    const invoiceEmail = Number(amount) > 0
+      ? await emailInvoiceForCreatedPayment(supabase, tenantId, payment)
+      : { sent: false as const, reason: "no_parent_email" as const };
+
+    return NextResponse.json({ ...normalizePayment(payment), invoiceEmail }, { status: 201 });
   } catch {
     return NextResponse.json({ error: "Failed to create payment" }, { status: 500 });
   }

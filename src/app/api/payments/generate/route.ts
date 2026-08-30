@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTenantContext } from "@/lib/auth";
 import { calculateStatus } from "@/lib/payments/utils";
+import { randomUUID } from "crypto";
 
 export async function POST(req: NextRequest) {
   let ctx: Awaited<ReturnType<typeof getTenantContext>>;
@@ -20,85 +21,109 @@ export async function POST(req: NextRequest) {
     const firstOfMonth = `${year}-${String(month).padStart(2, "0")}-01`;
     const now = new Date().toISOString();
 
-    const { data: activeStudents, error: studentsErr } = await supabase
-      .from("students")
-      .select("id, fullName, monthlyFee, billingType, advanceBalance")
+    // Prefetch existing payments for this month in one query (no N+1)
+    const { data: existingRows } = await supabase
+      .from("payments")
+      .select("studentId")
       .eq("tenantId", tenantId)
-      .eq("status", "active")
-      .gt("monthlyFee", 0);
+      .eq("month", firstOfMonth);
+    const existingSet = new Set((existingRows || []).map((r: any) => r.studentId));
 
-    if (studentsErr) {
-      return NextResponse.json({ error: studentsErr.message }, { status: 500 });
-    }
-
+    // Page through fee-paying students instead of loading unbounded set
+    const PAGE = 200;
+    let page = 1;
     let created = 0;
     let skipped = 0;
     let advancesUsed = 0;
     const errors: string[] = [];
+    let total = 0;
 
-    for (const student of activeStudents || []) {
-      if (student.billingType === "per_session") {
-        skipped++;
-        continue;
-      }
-
-      const { data: existing } = await supabase
-        .from("payments")
-        .select("id")
+    for (;;) {
+      const offset = (page - 1) * PAGE;
+      const { data: activeStudents, error: studentsErr } = await supabase
+        .from("students")
+        .select("id, fullName, monthlyFee, billingType, advanceBalance")
         .eq("tenantId", tenantId)
-        .eq("studentId", student.id)
-        .eq("month", firstOfMonth)
-        .maybeSingle();
+        .eq("status", "active")
+        .gt("monthlyFee", 0)
+        .order("fullName", { ascending: true })
+        .range(offset, offset + PAGE - 1);
 
-      if (existing) {
-        skipped++;
-        continue;
+      if (studentsErr) {
+        return NextResponse.json({ error: studentsErr.message }, { status: 500 });
+      }
+      const batch = activeStudents || [];
+      if (batch.length === 0) break;
+      total += batch.length;
+
+      const toInsert: Record<string, unknown>[] = [];
+      const advanceUpdates: { id: string; advanceBalance: number }[] = [];
+
+      for (const student of batch) {
+        if (student.billingType === "per_session") {
+          skipped++;
+          continue;
+        }
+        if (existingSet.has(student.id)) {
+          skipped++;
+          continue;
+        }
+
+        const amountDue = Number(student.monthlyFee);
+        let advanceBalance = Number(student.advanceBalance || 0);
+        let amountPaid = 0;
+
+        if (advanceBalance > 0) {
+          const deduction = Math.min(advanceBalance, amountDue);
+          amountPaid = deduction;
+          advanceBalance -= deduction;
+          advanceUpdates.push({ id: student.id, advanceBalance });
+          advancesUsed++;
+        }
+
+        const status = calculateStatus(amountDue, amountPaid, new Date(firstOfMonth));
+        toInsert.push({
+          id: randomUUID(),
+          tenantId,
+          studentId: student.id,
+          month: firstOfMonth,
+          amountDue,
+          amountPaid,
+          status,
+          paidAt: status === "paid" ? now : null,
+          createdAt: now,
+          updatedAt: now,
+        });
+        existingSet.add(student.id);
       }
 
-      const amountDue = Number(student.monthlyFee);
-      let advanceBalance = Number(student.advanceBalance || 0);
-      let amountPaid = 0;
-
-      if (advanceBalance > 0) {
-        const deduction = Math.min(advanceBalance, amountDue);
-        amountPaid = deduction;
-        advanceBalance -= deduction;
-        await supabase.from("students").update({ advanceBalance }).eq("id", student.id);
-        advancesUsed++;
+      for (const u of advanceUpdates) {
+        await supabase.from("students").update({ advanceBalance: u.advanceBalance }).eq("id", u.id);
       }
 
-      const status = calculateStatus(amountDue, amountPaid, new Date(firstOfMonth));
-      const paidAt = status === "paid" ? now : null;
-
-      const insertFields: Record<string, unknown> = {
-        id: crypto.randomUUID(),
-        tenantId,
-        studentId: student.id,
-        month: firstOfMonth,
-        amountDue,
-        amountPaid,
-        status,
-        paidAt,
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      // receiptNumber / receiptSequence columns removed from schema — skip
-
-      const { error: insertErr } = await supabase.from("payments").insert(insertFields);
-
-      if (insertErr) {
-        errors.push(`${student.fullName}: ${insertErr.message}`);
-      } else {
-        created++;
+      if (toInsert.length > 0) {
+        const { error: insertErr } = await supabase.from("payments").insert(toInsert);
+        if (insertErr) {
+          // Fallback row-by-row for this chunk only
+          for (const row of toInsert) {
+            const { error } = await supabase.from("payments").insert(row);
+            if (error) errors.push(`${row.studentId}: ${error.message}`);
+            else created++;
+          }
+        } else {
+          created += toInsert.length;
+        }
       }
+
+      if (batch.length < PAGE) break;
+      page++;
     }
 
     return NextResponse.json({
       created,
       skipped,
       advances_used: advancesUsed,
-      total: (activeStudents || []).length,
+      total,
       errors: errors.length > 0 ? errors : undefined,
       month: firstOfMonth,
     });

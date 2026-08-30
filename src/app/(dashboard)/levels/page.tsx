@@ -9,7 +9,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
 } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
-import { Plus, Pencil, Trash2, RefreshCw, Layers } from "lucide-react";
+import { Plus, Pencil, Trash2, RefreshCw, Layers } from "@/lib/lucide";
 import { toast } from "sonner";
 
 interface Level {

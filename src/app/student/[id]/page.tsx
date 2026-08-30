@@ -11,25 +11,28 @@ async function getStudentData(id: string) {
   const { supabase, tenantId } = await getTenantContext();
   const { data: student } = await supabase
     .from("students")
-    .select("*")
+    .select("id, fullName, gradeLevel, phone, fatherPhone, schoolName, status, monthlyFee, advanceBalance")
     .eq("id", id)
     .eq("tenantId", tenantId)
     .single();
   if (!student) return null;
 
-  const { data: payments } = await supabase
-    .from("payments")
-    .select("*")
-    .eq("studentId", id)
-    .eq("tenantId", tenantId)
-    .order("month", { ascending: false });
-
-  const { data: attendances } = await supabase
-    .from("attendances")
-    .select("*, sessions(*)")
-    .eq("studentId", id)
-    .eq("tenantId", tenantId)
-    .order("markedAt", { ascending: false });
+  const [{ data: payments }, { data: attendances }] = await Promise.all([
+    supabase
+      .from("payments")
+      .select("id, month, amountDue, amountPaid, status, paidAt")
+      .eq("studentId", id)
+      .eq("tenantId", tenantId)
+      .order("month", { ascending: false })
+      .limit(24),
+    supabase
+      .from("attendances")
+      .select("*, sessions(sessionDate, startTime, endTime, groupId)")
+      .eq("studentId", id)
+      .eq("tenantId", tenantId)
+      .order("markedAt", { ascending: false })
+      .limit(50),
+  ]);
 
   return { student, payments: payments || [], attendances: attendances || [] };
 }

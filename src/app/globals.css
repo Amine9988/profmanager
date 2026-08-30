@@ -152,6 +152,21 @@
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
+  /*
+   * Permanent anti-freeze (Electron + Radix):
+   * 1) When no modal is marked open, force body interactive.
+   * 2) Form fields always accept pointer events even if body was left locked.
+   */
+  html:not([data-pm-modal-open]) body {
+    pointer-events: auto !important;
+  }
+  input:not([disabled]):not([type="hidden"]),
+  textarea:not([disabled]),
+  select:not([disabled]),
+  [contenteditable="true"],
+  [data-slot="input"] {
+    pointer-events: auto !important;
+  }
   ::selection {
     @apply bg-primary/15 text-primary;
   }
