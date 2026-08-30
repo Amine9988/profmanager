@@ -67,8 +67,10 @@ export async function emailSubscriptionEnded(
       : Promise.resolve({ data: [] }),
   ]);
 
-  const studentById = new Map((students || []).map((s: any) => [s.id, s]));
-  const groupById = new Map((groups || []).map((g: any) => [g.id, g.name || ""]));
+  const studentById = new Map<string, { fullName?: string; email?: string }>(
+    (students || []).map((s: any) => [String(s.id), { fullName: s.fullName, email: s.email }])
+  );
+  const groupById = new Map<string, string>((groups || []).map((g: any) => [String(g.id), String(g.name || "")]));
 
   const results = await Promise.all(
     members.map(async (m) => {

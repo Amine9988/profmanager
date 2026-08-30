@@ -84,7 +84,7 @@ export async function getOverdueSubscriptionsData(): Promise<OverdueSubscription
       .from("groups")
       .select("id, name")
       .in("id", overdueGroupIds);
-    const nameById = new Map((groupRows || []).map((g: any) => [g.id, g.name]));
+    const nameById = new Map<string, string>((groupRows || []).map((g: any) => [String(g.id), String(g.name || "")]));
     for (const [sid, sub] of byStudent) {
       const ids = overdueGroupIdsByStudent.get(sid);
       sub.groups = ids

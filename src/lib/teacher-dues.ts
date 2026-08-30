@@ -376,7 +376,7 @@ export async function computeTeacherDues(
         .select("id, clientType")
         .eq("tenantId", tenantId)
         .in("id", attendedStudentIds);
-      clientTypeByStudent = new Map((students || []).map((st: any) => [st.id, st.clientType || "institution"]));
+      clientTypeByStudent = new Map<string, string>((students || []).map((st: any) => [String(st.id), String(st.clientType || "institution")]));
     }
     const enrollmentType = new Map<string, string>();
     for (const gs of enrollments || []) {

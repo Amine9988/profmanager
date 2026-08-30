@@ -112,12 +112,12 @@ export async function autoMarkAbsentForPastSessions(): Promise<number> {
       return sessionDateKey(session?.sessionDate) === todayStr;
     });
     if (todayAbsences.length > 0) {
-      const groupById = new Map(past.map((s: any) => [s.id, s.groupId]));
+      const groupById = new Map<string, string>(past.map((s: any) => [String(s.id), String(s.groupId || "")]));
       void Promise.allSettled(
         todayAbsences.map((row) =>
           emailAbsenceForNewMark(supabase, tenantId, {
             studentId: String(row.studentId),
-            groupId: groupById.get(row.sessionId) || null,
+            groupId: groupById.get(String(row.sessionId)) || null,
           })
         )
       ).then((results) => {

@@ -38,7 +38,9 @@ async function loadExhausted(supabase: any, tenantId: string) {
   const { data: students } = studentIds.length
     ? await supabase.from("students").select("id, fullName, email").in("id", studentIds)
     : { data: [] };
-  const studentById = new Map((students || []).map((s: any) => [s.id, s]));
+  const studentById = new Map<string, { fullName?: string; email?: string }>(
+    (students || []).map((s: any) => [String(s.id), { fullName: s.fullName, email: s.email }])
+  );
 
   const rows = (enrollments || []).map((gs: any) => {
     const included = Number(includedByGroup.get(gs.groupId) || 0);
@@ -112,7 +114,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const results = [];
+    const results: Array<Record<string, unknown>> = [];
     for (const row of targets) {
       const result = await sendSubscriptionEndedNotice({
         tenant: tenant || {},

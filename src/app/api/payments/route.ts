@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
     const groupIds = [...new Set(merged.map((p: any) => p.groupId).filter(Boolean))];
     if (groupIds.length > 0) {
       const { data: groupRows } = await supabase.from("groups").select("id, name").in("id", groupIds);
-      const nameById = new Map((groupRows || []).map((g: any) => [g.id, g.name]));
+      const nameById = new Map<string, string>((groupRows || []).map((g: any) => [String(g.id), String(g.name || "")]));
       for (const p of merged) {
         p.groupName = p.groupId ? nameById.get(p.groupId) || "" : "";
       }
