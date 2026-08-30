@@ -151,10 +151,11 @@ function sleep(ms) {
   let runId = null;
   let reuse = false;
   {
-    console.log("Dispatching Build Mac (native arm64 + intel)…");
+    const ref = process.env.MAC_BUILD_REF || execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { encoding: "utf8" }).trim() || "master";
+    console.log("Dispatching Build Mac (native arm64 + intel) ref=" + ref);
     await api("POST", `/repos/${OWNER}/${REPO}/actions/workflows/${WORKFLOW}/dispatches`, {
       token,
-      body: { ref: "master" },
+      body: { ref },
     });
     const started = Date.now();
     for (let i = 0; i < 30; i++) {
