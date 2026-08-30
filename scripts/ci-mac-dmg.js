@@ -235,7 +235,6 @@ function sleep(ms) {
       console.log(`removed ${f}`);
     }
   }
-  fs.rmSync(tmpZip, { force: true });
   fs.rmSync(tmpDir, { recursive: true, force: true });
   console.log("Done. Apple setup files are in electron/dist (dmg only).");
 })().catch((e) => {
