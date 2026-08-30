@@ -93,7 +93,7 @@ function followDownload(url, token, dest) {
       if (hops > 8) return reject(new Error("Too many redirects"));
       const u = new URL(target);
       const headers = {
-        Accept: "application/octet-stream",
+        Accept: sendAuth ? "application/vnd.github+json" : "*/*",
         "User-Agent": "profmanager-mac-dmg",
         "X-GitHub-Api-Version": "2022-11-28",
       };
