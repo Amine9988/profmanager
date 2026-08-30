@@ -10,8 +10,10 @@ async function loadExhausted(supabase: any, tenantId: string) {
     .select("id, name, sessionsIncluded")
     .eq("tenantId", tenantId);
   const groupIds = (groups || []).map((g: any) => g.id);
-  const includedByGroup = new Map((groups || []).map((g: any) => [g.id, Number(g.sessionsIncluded) || 0]));
-  const nameByGroup = new Map((groups || []).map((g: any) => [g.id, g.name || ""]));
+  const includedByGroup = new Map<string, number>(
+    (groups || []).map((g: any) => [String(g.id), Number(g.sessionsIncluded) || 0])
+  );
+  const nameByGroup = new Map<string, string>((groups || []).map((g: any) => [String(g.id), String(g.name || "")]));
 
   const { data: enrollments } = groupIds.length
     ? await supabase.from("group_students").select("*").eq("status", "active").in("groupId", groupIds)
@@ -39,8 +41,8 @@ async function loadExhausted(supabase: any, tenantId: string) {
   const studentById = new Map((students || []).map((s: any) => [s.id, s]));
 
   const rows = (enrollments || []).map((gs: any) => {
-    const included = includedByGroup.get(gs.groupId) || 0;
-    const paid = (paidCount.get(`${gs.studentId}|${gs.groupId}`) || 0) * included;
+    const included = Number(includedByGroup.get(gs.groupId) || 0);
+    const paid = Number(paidCount.get(`${gs.studentId}|${gs.groupId}`) || 0) * included;
     const consumed = Number(gs.consumedSessions ?? 0);
     const student = studentById.get(gs.studentId);
     return {
