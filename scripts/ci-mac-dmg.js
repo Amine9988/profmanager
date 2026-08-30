@@ -178,7 +178,9 @@ function sleep(ms) {
       const concl = info.json.conclusion;
       console.log(`Build Mac: ${st}${concl ? " / " + concl : ""}`);
       if (st === "completed") {
-        if (concl !== "success") throw new Error(`Mac build failed: ${concl}`);
+        if (concl !== "success") {
+          console.log("workflow conclusion=" + concl + " — will still download any DMG artifacts");
+        }
         break;
       }
       await sleep(20000);

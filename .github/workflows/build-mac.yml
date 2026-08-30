@@ -96,7 +96,7 @@ jobs:
       - name: Merge latest-mac.yml
         run: node scripts/merge-mac-channel.js electron/dist
       - name: Install R2 client
-        run: npm install @aws-sdk/client-s3 --omit=dev --no-fund --no-audit
+        run: npm install @aws-sdk/client-s3 --no-save --no-fund --no-audit
       - name: Publish to R2
         env:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
@@ -108,7 +108,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ProfManager-Mac-${{ github.ref_name }}
+          name: ProfManager-Mac-${{ github.run_id }}
           path: |
             electron/dist/*.dmg
             electron/dist/*.blockmap
