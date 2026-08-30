@@ -10,6 +10,7 @@ import { formatCurrency, formatDate, initials, sessionCounterDisplay } from "@/l
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { StudentEditDialog } from "@/components/students/student-edit-dialog";
 import { CardDialog } from "@/components/students/card-dialog";
+import { getGroups } from "@/server/actions/groups";
 import { getT, getInitialLocale } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
@@ -28,9 +29,10 @@ export default async function StudentDetailPage({
 }) {
   const { id } = await params;
   const locale = await getInitialLocale();
-  const [student, t] = await Promise.all([
+  const [student, t, allGroups] = await Promise.all([
     getStudent(id),
     getT(locale),
+    getGroups(),
   ]);
   const fmt = (v: number) => formatCurrency(v);
 
@@ -41,6 +43,7 @@ export default async function StudentDetailPage({
     .map((gs: any) => ({
       id: gs.group?.id ?? "?",
       name: gs.group?.name ?? "?",
+      roomName: gs.group?.roomName ?? null,
       sessionsIncluded: gs.group?.sessionsIncluded != null ? Number(gs.group.sessionsIncluded) : null,
       consumedSessions: gs.consumedSessions != null ? Number(gs.consumedSessions) : 0,
       paidSessions: gs.paidSessions != null ? Number(gs.paidSessions) : 0,
@@ -76,7 +79,17 @@ export default async function StudentDetailPage({
                 {student.schoolName ? ` \u00B7 ${student.schoolName}` : ""}
               </p>
             </div>
-            <StudentEditDialog student={student} />
+            <StudentEditDialog
+              student={student}
+              allGroups={allGroups.map((g) => ({ id: g.id, name: g.name }))}
+              enrolledGroups={(student.groupStudents as any[])
+                .filter((gs: any) => gs.status === "active" && gs.group)
+                .map((gs: any) => ({
+                  id: gs.group.id,
+                  name: gs.group.name,
+                  clientType: (gs.clientType as "institution" | "teacher" | null) ?? undefined,
+                }))}
+            />
             <CardDialog studentId={student.id} />
           </div>
         </div>
@@ -131,6 +144,7 @@ export default async function StudentDetailPage({
                 <Link key={g.id} href={`/groups/${g.id}`}>
                   <Badge variant="secondary" className="cursor-pointer hover:bg-accent">
                     {g.name}
+                    {g.roomName ? <span className="font-normal text-muted-foreground"> · {g.roomName}</span> : null}
 {g.sessionsIncluded != null && g.sessionsIncluded > 0 && (() => {
                         const d = sessionCounterDisplay(g.sessionsIncluded, g.consumedSessions, g.paidSessions);
                         if (d.state === "hidden") return null;
@@ -190,7 +204,10 @@ export default async function StudentDetailPage({
                   <TableBody>
                     {groups.map((g) => (
                       <TableRow key={g.id}>
-                        <TableCell className="font-medium">{g.name}</TableCell>
+                        <TableCell className="font-medium">
+                          {g.name}
+                          {g.roomName ? <span className="font-normal text-muted-foreground"> · {g.roomName}</span> : null}
+                        </TableCell>
                         <TableCell>
 {(() => {
                           const d = sessionCounterDisplay(g.sessionsIncluded, g.consumedSessions, g.paidSessions);

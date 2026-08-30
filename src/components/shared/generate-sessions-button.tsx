@@ -4,7 +4,7 @@ import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { generateAllSessions } from "@/server/actions/sessions";
 import { Button } from "@/components/ui/button";
-import { CalendarPlus } from "lucide-react";
+import { CalendarPlus } from "@/lib/lucide";
 import { toast } from "sonner";
 import { useT } from "@/lib/i18n";
 

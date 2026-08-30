@@ -39,17 +39,41 @@ jobs:
           test -f electron/standalone-server/server.js
           test -d electron/standalone-server/node_modules
           echo "standalone ok"
+      - name: Install Electron app toolchain
+        working-directory: electron
+        run: |
+          chmod +x install-mac.command
+          if [ ! -f public/icon.icns ]; then
+            mkdir -p /tmp/pm.iconset
+            for s in 16 32 64 128 256 512; do
+              sips -z $s $s public/icon.png --out /tmp/pm.iconset/icon_${s}x${s}.png >/dev/null
+              ds=$((s*2))
+              sips -z $ds $ds public/icon.png --out /tmp/pm.iconset/icon_${s}x${s}@2x.png >/dev/null
+            done
+            iconutil -c icns /tmp/pm.iconset -o public/icon.icns
+          fi
+          test -f public/icon.icns
+          test -f public/icon.png
+          npm install --no-fund --no-audit
+          node ../scripts/make-dmg-background.js
+          test -f public/dmg-background.png
       - name: Build DMG
         working-directory: electron
-        run: npx electron-builder --mac dmg --${{ matrix.arch }} --publish never
+        run: |
+          if [ -n "${{ secrets.CSC_LINK }}" ]; then
+            export CSC_LINK="${{ secrets.CSC_LINK }}"
+            export CSC_KEY_PASSWORD="${{ secrets.CSC_KEY_PASSWORD }}"
+            export CSC_IDENTITY_AUTO_DISCOVERY=true
+            export APPLE_ID="${{ secrets.APPLE_ID }}"
+            export APPLE_APP_SPECIFIC_PASSWORD="${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}"
+            export APPLE_TEAM_ID="${{ secrets.APPLE_TEAM_ID }}"
+          else
+            unset CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+          fi
+          ./node_modules/.bin/electron-builder --mac dmg --${{ matrix.arch }} --publish never
         env:
           CI: "false"
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.CSC_LINK != '' && 'true' || 'false' }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       - uses: actions/upload-artifact@v4
         with:
           name: dmg-${{ matrix.arch }}
@@ -87,7 +111,7 @@ jobs:
       - name: Merge latest-mac.yml
         run: node scripts/merge-mac-channel.js electron/dist
       - name: Install R2 client
-        run: npm install @aws-sdk/client-s3 --omit=dev --no-fund --no-audit
+        run: npm install @aws-sdk/client-s3 --no-save --no-fund --no-audit
       - name: Publish to R2
         env:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
@@ -99,7 +123,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ProfManager-Mac-${{ github.ref_name }}
+          name: ProfManager-Mac-${{ github.run_id }}
           path: |
             electron/dist/*.dmg
             electron/dist/*.blockmap

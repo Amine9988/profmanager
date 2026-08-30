@@ -1,7 +1,8 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { unlockForField } from "@/lib/ui-unlock";
 
-function Input({ className, type, ...props }: React.ComponentProps<"input">) {
+function Input({ className, type, onFocus, ...props }: React.ComponentProps<"input">) {
   return (
     <input
       type={type}
@@ -13,6 +14,10 @@ function Input({ className, type, ...props }: React.ComponentProps<"input">) {
         className
       )}
       {...props}
+      onFocus={(e) => {
+        unlockForField(e.target);
+        onFocus?.(e);
+      }}
     />
   );
 }

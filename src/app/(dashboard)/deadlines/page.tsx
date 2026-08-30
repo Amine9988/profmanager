@@ -2,7 +2,7 @@
 
 import { useT } from "@/lib/i18n";
 import { Card, CardContent } from "@/components/ui/card";
-import { Clock } from "lucide-react";
+import { Clock } from "@/lib/lucide";
 
 export default function DeadlinesPage() {
   const t = useT();

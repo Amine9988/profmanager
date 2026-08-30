@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { LucideIcon } from "lucide-react";
+import type { LucideIcon } from "@/lib/lucide";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 

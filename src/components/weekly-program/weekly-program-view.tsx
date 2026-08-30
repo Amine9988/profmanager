@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useT, useI18n } from "@/lib/i18n";
 import type { WeeklySlot, WeeklyProgramData } from "@/server/actions/weekly-program";
-import { CalendarDays, MapPin, Monitor, Users, X } from "lucide-react";
+import { CalendarDays, MapPin, Monitor, Users, X } from "@/lib/lucide";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {

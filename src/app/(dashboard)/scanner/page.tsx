@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import {
   XCircle,
   AlertTriangle,
-} from "lucide-react";
+} from "@/lib/lucide";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
 import type { BarcodeSummary } from "@/server/actions/barcode";

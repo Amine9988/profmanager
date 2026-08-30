@@ -1,6 +1,7 @@
 import { getTenantContext } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { generateSessionDates } from "@/lib/generate-sessions";
+import { isLikelyBakedYearEnd, pickEarlierYmd, pickLaterYmd, resolveGroupSessionRange } from "@/lib/session-dates";
 
 export const dynamic = "force-dynamic";
 
@@ -20,16 +21,21 @@ export async function POST() {
     .eq("tenantId", tenantId)
     .maybeSingle();
 
-  if (!settings?.schoolYearStart || !settings?.schoolYearEnd) {
+  const { data: tenant } = await admin
+    .from("tenants")
+    .select("schoolYearStart, schoolYearEnd")
+    .eq("id", tenantId)
+    .maybeSingle();
+  const yearStart = pickEarlierYmd(settings?.schoolYearStart, tenant?.schoolYearStart);
+  const yearEnd = pickLaterYmd(settings?.schoolYearEnd, tenant?.schoolYearEnd);
+
+  if (!yearStart || !yearEnd) {
     return NextResponse.json({ error: "School year dates not set in settings" }, { status: 400 });
   }
 
-  const startDate = new Date(settings.schoolYearStart);
-  const endDate = new Date(settings.schoolYearEnd);
-
   const { data: groups } = await admin
     .from("groups")
-    .select("id, name, schedule_slots(*)")
+    .select("id, name, expiresAt, expiresAtCustom, schedule_slots(*)")
     .eq("tenantId", tenantId);
 
   let totalGenerated = 0;
@@ -43,7 +49,20 @@ export async function POST() {
       continue;
     }
 
-    const dates = generateSessionDates(slots, startDate, endDate);
+    const allEnds = (groups ?? []).map((g: any) => g.expiresAt);
+    const customEnd =
+      Number((group as any).expiresAtCustom) === 1 ||
+      (!isLikelyBakedYearEnd((group as any).expiresAt, yearEnd, allEnds) &&
+        !!(group as any).expiresAt);
+    const range = resolveGroupSessionRange(yearStart, yearEnd, (group as any).expiresAt, {
+      customEnd,
+    });
+    if (!range) {
+      results.push({ group: (group as any).name, sessions: 0, reason: "invalid dates" });
+      continue;
+    }
+
+    const dates = generateSessionDates(slots, range.start, range.end);
 
     if (dates.length === 0) {
       results.push({ group: (group as any).name, sessions: 0, reason: "no matching days" });
@@ -94,8 +113,8 @@ export async function POST() {
     success: true,
     total: totalGenerated,
     schoolYear: {
-      start: settings.schoolYearStart,
-      end: settings.schoolYearEnd,
+      start: yearStart,
+      end: yearEnd,
     },
     results,
   });

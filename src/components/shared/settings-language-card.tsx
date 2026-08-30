@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useLocale, useT } from "@/lib/i18n";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Check, Globe } from "lucide-react";
+import { Check, Globe } from "@/lib/lucide";
 import type { Locale } from "@/lib/i18n";
 import { getDirection } from "@/lib/i18n";
 

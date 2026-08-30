@@ -14,8 +14,9 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { DollarSign } from "lucide-react";
+import { DollarSign } from "@/lib/lucide";
 import { toast } from "sonner";
+import { toastInvoiceEmail } from "@/lib/invoice-email-toast";
 
 interface Props {
   studentId?: string;
@@ -45,28 +46,23 @@ export function RecordPaymentDialog({ studentId: preselectedId, studentName, onR
 
   useEffect(() => {
     if (open) {
-      fetch("/api/groups?withStudents=true")
+      fetch("/api/groups")
         .then((r) => r.json())
         .then((data) => {
-          const list = Array.isArray(data) ? data : [];
+          const list = (Array.isArray(data) ? data : []).map((g: any) => ({
+            ...g,
+            students: g.students || [],
+          }));
           setGroups(list);
-          if (preselectedId) {
-            const g = list.find((x: any) => (x.students || []).some((s: any) => s.id === preselectedId));
-            if (g) {
-              setGroupId(g.id);
-              if (g.pricePerSession) setAmount(String(g.pricePerSession));
-            }
-          }
         })
         .catch(() => {});
-      fetch("/api/students")
-        .then((r) => r.json())
-        .then(setStudents)
-        .catch(() => {});
+      setStudents([]);
       requestAnimationFrame(() => {
         if (!preselectedId) {
           setGroupId("");
           setStudentId("");
+        } else {
+          setStudentId(preselectedId);
         }
         setDiscount("0");
         setAmount("");
@@ -74,12 +70,45 @@ export function RecordPaymentDialog({ studentId: preselectedId, studentName, onR
     }
   }, [open, preselectedId]);
 
+  useEffect(() => {
+    if (!open || !groupId) return;
+    fetch(`/api/groups?id=${encodeURIComponent(groupId)}&withStudents=true`)
+      .then((r) => r.json())
+      .then((data) => {
+        const g = Array.isArray(data) ? data[0] : null;
+        if (!g) return;
+        setGroups((prev) =>
+          prev.map((x) => (x.id === groupId ? { ...x, students: g.students || [], pricePerSession: g.pricePerSession ?? x.pricePerSession, priceType: g.priceType ?? x.priceType } : x))
+        );
+        const price = Number(g.pricePerSession);
+        if (Number.isFinite(price) && price > 0) setAmount((prev) => prev || String(price));
+      })
+      .catch(() => {});
+  }, [open, groupId]);
+
+  useEffect(() => {
+    if (!open || !studentId) return;
+    fetch(`/api/students?id=${encodeURIComponent(studentId)}&limit=1&page=1&view=lite`)
+      .then((r) => r.json())
+      .then((json) => {
+        const list = Array.isArray(json) ? json : json.data || [];
+        const hit = list.find((s: any) => s.id === studentId);
+        if (hit) {
+          setStudents((prev) => {
+            const others = prev.filter((s) => s.id !== studentId);
+            return [...others, hit];
+          });
+        }
+      })
+      .catch(() => {});
+  }, [open, studentId]);
+
   const selectedGroup = groups.find((g) => g.id === groupId);
-  const studentGroups = preselectedId ? groups.filter((g) => g.students.some((s) => s.id === preselectedId)) : [];
-  const displayGroups = preselectedId ? (studentGroups.length > 0 ? studentGroups : groups) : groups;
+  const displayGroups = groups;
   const availableStudents = selectedGroup?.students || [];
   const selectedStudentData = students.find((s) => s.id === studentId);
-  const basePrice = selectedGroup?.pricePerSession ?? 0;
+  const groupPrice = Number(selectedGroup?.pricePerSession);
+  const basePrice = Number.isFinite(groupPrice) && groupPrice > 0 ? groupPrice : 0;
   const discountPct = Math.min(100, Math.max(0, Number(discount) || 0));
   const amountDue = basePrice > 0 ? Math.round(basePrice * (1 - discountPct / 100)) : 0;
   const advanceBalance = selectedStudentData?.advanceBalance ?? 0;
@@ -89,9 +118,9 @@ export function RecordPaymentDialog({ studentId: preselectedId, studentName, onR
     setDiscount(pctStr);
     const pct = Math.min(100, Math.max(0, Number(pctStr) || 0));
     const g = groups.find((x) => x.id === gid);
-    if (g?.pricePerSession) {
-      const due = Math.round(g.pricePerSession * (1 - pct / 100));
-      setAmount(String(due));
+    const price = Number(g?.pricePerSession);
+    if (Number.isFinite(price) && price > 0) {
+      setAmount(String(Math.round(price * (1 - pct / 100))));
     }
     void sid;
   }
@@ -111,14 +140,15 @@ export function RecordPaymentDialog({ studentId: preselectedId, studentName, onR
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ studentId, groupId, month, amount: amt, paymentDate, discountPercent: discountPct }),
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         toast.success(t("payments.paymentRecorded"));
+        toastInvoiceEmail(t, data.invoiceEmail);
         setOpen(false);
         if (onRecorded) onRecorded();
         if (typeof window !== "undefined") window.location.reload();
       } else {
-        const err = await res.json();
-        toast.error(err.error || t("common.error"));
+        toast.error(data.error || t("common.error"));
       }
     } catch {
       toast.error(t("common.error"));
@@ -161,7 +191,7 @@ export function RecordPaymentDialog({ studentId: preselectedId, studentName, onR
               {displayGroups.map((g) => (
                 <option key={g.id} value={g.id}>
                   {g.name}
-                  {g.pricePerSession != null ? ` — ${formatCurrency(g.pricePerSession)}` : ""}
+                  {Number(g.pricePerSession) > 0 ? ` — ${formatCurrency(Number(g.pricePerSession))}` : ""}
                 </option>
               ))}
             </select>

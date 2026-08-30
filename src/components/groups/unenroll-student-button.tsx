@@ -12,7 +12,7 @@ import {
   DialogFooter,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { UserMinus } from "lucide-react";
+import { UserMinus } from "@/lib/lucide";
 import { toast } from "sonner";
 import { useT } from "@/lib/i18n";
 

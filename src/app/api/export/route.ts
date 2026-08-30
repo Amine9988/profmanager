@@ -120,12 +120,14 @@ export async function GET(req: NextRequest) {
     const today = new Date().toISOString().split("T")[0];
 
     if (type === "cash") {
+      // Cap export to last 5000 movements — enough for practical Excel use
       const { data: movements } = await supabase
         .from("cash_movements")
-        .select("*")
+        .select("date, type, category, amount, paymentMethod, description")
         .eq("tenantId", tenantId)
         .order("date", { ascending: false })
-        .order("createdAt", { ascending: false });
+        .order("createdAt", { ascending: false })
+        .limit(5000);
 
       const rows: (string | number)[][] = (movements || []).map((m, i) => [
         i + 1,
@@ -164,14 +166,16 @@ export async function GET(req: NextRequest) {
     if (type === "teachers") {
       const { data: teachers } = await supabase
         .from("teachers")
-        .select("*")
+        .select("id, firstName, lastName, phone, salaryType, salaryAmount")
         .eq("tenantId", tenantId)
-        .order("createdAt", { ascending: true });
+        .order("createdAt", { ascending: true })
+        .limit(500);
 
-      // Single source of truth: same computation as the dues dialog.
+      // Current month only — full history per teacher is too heavy for export
+      const month = today.slice(0, 7);
       const computed: (TeacherDuesResult | null)[] = [];
       for (const t of teachers || []) {
-        computed.push(await computeTeacherDues(supabase, tenantId, t.id, null));
+        computed.push(await computeTeacherDues(supabase, tenantId, t.id, month));
       }
 
       const rows: (string | number)[][] = (teachers || []).map((t, i) => {
@@ -200,40 +204,58 @@ export async function GET(req: NextRequest) {
     }
 
     if (type === "students") {
-      const { data: students } = await supabase
-        .from("students")
-        .select("*")
-        .eq("tenantId", tenantId)
-        .order("fullName", { ascending: true });
-
-      const { data: payments } = await supabase
-        .from("payments")
-        .select("studentId, amountDue, amountPaid")
-        .eq("tenantId", tenantId);
-
+      // Page through students; aggregate payment stats in a lean pass
       const statsByStudent = new Map<string, { paid: number; remaining: number }>();
-      for (const p of payments || []) {
-        const cur: { paid: number; remaining: number } = statsByStudent.get(p.studentId) || { paid: 0, remaining: 0 };
-        const due = Number(p.amountDue) || 0;
-        const paidAmt = Number(p.amountPaid) || 0;
-        cur.paid += paidAmt;
-        cur.remaining += Math.max(due - paidAmt, 0);
-        statsByStudent.set(p.studentId, cur);
+      let payOffset = 0;
+      const PAY_PAGE = 2000;
+      for (;;) {
+        const { data: payments } = await supabase
+          .from("payments")
+          .select("studentId, amountDue, amountPaid")
+          .eq("tenantId", tenantId)
+          .range(payOffset, payOffset + PAY_PAGE - 1);
+        const batch = payments || [];
+        for (const p of batch) {
+          const cur: { paid: number; remaining: number } = statsByStudent.get(p.studentId) || { paid: 0, remaining: 0 };
+          const due = Number(p.amountDue) || 0;
+          const paidAmt = Number(p.amountPaid) || 0;
+          cur.paid += paidAmt;
+          cur.remaining += Math.max(due - paidAmt, 0);
+          statsByStudent.set(p.studentId, cur);
+        }
+        if (batch.length < PAY_PAGE) break;
+        payOffset += PAY_PAGE;
       }
 
-      const rows: (string | number)[][] = (students || []).map((s, i) => {
-        const st = statsByStudent.get(s.id) || { paid: 0, remaining: 0 };
-        return [
-          i + 1,
-          s.fullName,
-          s.gradeLevel || "",
-          s.phone || "",
-          s.fatherPhone || "",
-          fmtDate(s.enrolledAt),
-          Math.round(st.paid * 100) / 100,
-          Math.round(st.remaining * 100) / 100,
-        ];
-      });
+      const rows: (string | number)[][] = [];
+      let stuOffset = 0;
+      const STU_PAGE = 500;
+      let i = 0;
+      for (;;) {
+        const { data: students } = await supabase
+          .from("students")
+          .select("id, fullName, gradeLevel, phone, fatherPhone, enrolledAt, createdAt")
+          .eq("tenantId", tenantId)
+          .order("fullName", { ascending: true })
+          .range(stuOffset, stuOffset + STU_PAGE - 1);
+        const batch = students || [];
+        for (const s of batch) {
+          i++;
+          const st = statsByStudent.get(s.id) || { paid: 0, remaining: 0 };
+          rows.push([
+            i,
+            s.fullName,
+            s.gradeLevel || "",
+            s.phone || "",
+            s.fatherPhone || "",
+            fmtDate(s.enrolledAt || s.createdAt),
+            Math.round(st.paid * 100) / 100,
+            Math.round(st.remaining * 100) / 100,
+          ]);
+        }
+        if (batch.length < STU_PAGE) break;
+        stuOffset += STU_PAGE;
+      }
 
       const wb = buildWorkbook(
         "سجل التلاميذ",

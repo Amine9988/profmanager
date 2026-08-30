@@ -242,11 +242,14 @@ export async function getDb(): Promise<SqlJsDatabase> {
   // Runtime migrations
   try { _db.exec("ALTER TABLE tenants ADD COLUMN schoolPhone TEXT"); } catch {}
   try { _db.exec("ALTER TABLE tenants ADD COLUMN schoolLogo TEXT"); } catch {}
+  try { _db.exec("ALTER TABLE tenants ADD COLUMN schoolEmail TEXT"); } catch {}
+  try { _db.exec("ALTER TABLE tenants ADD COLUMN smtpPassword TEXT"); } catch {}
+  try { _db.exec("ALTER TABLE tenants ADD COLUMN smtpHost TEXT"); } catch {}
   try { _db.exec("ALTER TABLE students ADD COLUMN fatherPhone TEXT"); } catch {}
 try { _db.exec("ALTER TABLE students ADD COLUMN clientType TEXT NOT NULL DEFAULT 'institution'"); } catch {}
 try { _db.exec("ALTER TABLE teachers ADD COLUMN salaryAmountTeacher REAL NOT NULL DEFAULT 0"); } catch {}
 try { _db.exec("ALTER TABLE group_students ADD COLUMN clientType TEXT NOT NULL DEFAULT 'institution'"); } catch {}
-try { _db.exec("UPDATE group_students SET clientType = COALESCE((SELECT clientType FROM students WHERE students.id = group_students.studentId), 'institution') WHERE clientType = 'institution' AND EXISTS (SELECT 1 FROM students WHERE students.id = group_students.studentId AND students.clientType = 'teacher')"); } catch {}
+try { _db.exec("UPDATE group_students SET clientType = 'institution' WHERE clientType = 'teacher' AND EXISTS (SELECT 1 FROM students WHERE students.id = group_students.studentId AND students.clientType = 'institution')"); } catch {}
 // Attendance upsert relies on a real uniqueness constraint; without this index
 // repeated marks silently pile up duplicate rows and inflate presence counts.
 try {
@@ -254,6 +257,7 @@ try {
   _db.exec("CREATE UNIQUE INDEX IF NOT EXISTS ux_attendances_session_student ON attendances(sessionId, studentId)");
 } catch {}
 try { _db.exec("ALTER TABLE payments ADD COLUMN discountPercent REAL NOT NULL DEFAULT 0"); } catch {}
+try { _db.exec("ALTER TABLE teacher_payments ADD COLUMN coveredSessions TEXT"); } catch {}
 try { _db.exec(`CREATE TABLE IF NOT EXISTS deleted_items (id TEXT PRIMARY KEY, tenantId TEXT NOT NULL, userId TEXT NOT NULL, sourceType TEXT NOT NULL, originalData TEXT NOT NULL, description TEXT, deletedAt TEXT NOT NULL)`); } catch {}
   try { _db.exec("ALTER TABLE users ADD COLUMN passwordHash TEXT"); } catch {}
   try { _db.exec("ALTER TABLE tenants ADD COLUMN trialStartsAt TEXT"); } catch {}
@@ -261,8 +265,11 @@ try { _db.exec(`CREATE TABLE IF NOT EXISTS deleted_items (id TEXT PRIMARY KEY, t
   try { _db.exec(`ALTER TABLE "groups" ADD COLUMN sessionsIncluded INTEGER`); } catch {}
   try { _db.exec(`ALTER TABLE "groups" ADD COLUMN color TEXT`); } catch {}
   try { _db.exec(`ALTER TABLE "groups" ADD COLUMN expiresAt TEXT`); } catch {}
+  try { _db.exec(`ALTER TABLE "groups" ADD COLUMN expiresAtCustom INTEGER DEFAULT 0`); } catch {}
   try { _db.exec("ALTER TABLE group_students ADD COLUMN remainingSessions INTEGER"); } catch {}
   try { _db.exec("ALTER TABLE group_students ADD COLUMN consumedSessions INTEGER DEFAULT 0"); } catch {}
+  try { _db.exec("ALTER TABLE group_students ADD COLUMN renewalNoticeSentAt TEXT"); } catch {}
+  try { _db.exec("ALTER TABLE group_students ADD COLUMN renewalNoticeForPaid INTEGER"); } catch {}
   try { _db.exec("ALTER TABLE sessions ADD COLUMN creditsConsumed INTEGER DEFAULT 0"); } catch {}
   // Give each group without a color a distinct palette color so sessions of
   // different groups are easy to tell apart (rowid-stable; groups sharing a
@@ -370,6 +377,10 @@ try { _db.exec(`CREATE TABLE IF NOT EXISTS deleted_items (id TEXT PRIMARY KEY, t
   // Performance indexes for 10k+ scale
   try { _db.exec("CREATE INDEX IF NOT EXISTS idx_students_tenant ON students(tenantId)"); } catch {}
   try { _db.exec("CREATE INDEX IF NOT EXISTS idx_students_tenant_fullName ON students(tenantId, fullName)"); } catch {}
+  try { _db.exec("CREATE INDEX IF NOT EXISTS idx_students_tenant_status ON students(tenantId, status)"); } catch {}
+  try { _db.exec("CREATE INDEX IF NOT EXISTS idx_students_tenant_phone ON students(tenantId, phone)"); } catch {}
+  try { _db.exec("CREATE INDEX IF NOT EXISTS idx_attendances_tenant_student ON attendances(tenantId, studentId)"); } catch {}
+  try { _db.exec("CREATE INDEX IF NOT EXISTS idx_attendances_tenant_marked ON attendances(tenantId, markedAt)"); } catch {}
   try { _db.exec("CREATE INDEX IF NOT EXISTS idx_teachers_tenant ON teachers(tenantId)"); } catch {}
   try { _db.exec('CREATE INDEX IF NOT EXISTS idx_groups_tenant ON "groups"(tenantId)'); } catch {}
   try { _db.exec('CREATE INDEX IF NOT EXISTS idx_groups_tenant_name ON "groups"(tenantId, name)'); } catch {}

@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getGroup, getSubjects, getRooms } from "@/server/actions/groups";
-import { getStudents } from "@/server/actions/students";
 import { getAttendanceRateByGroup } from "@/server/actions/attendance";
 import { ExtraSessionDialog } from "@/components/groups/extra-session-dialog";
 import { EditExtraSessionDialog } from "@/components/groups/edit-extra-session-dialog";
@@ -25,9 +24,8 @@ export default async function GroupDetailPage({
 }) {
   const { id } = await params;
   const locale = await getInitialLocale();
-  const [group, allStudents, attendanceRate, subjects, rooms, t] = await Promise.all([
+  const [group, attendanceRate, subjects, rooms, t] = await Promise.all([
     getGroup(id),
-    getStudents(),
     getAttendanceRateByGroup(id),
     getSubjects(),
     getRooms(),
@@ -48,11 +46,6 @@ export default async function GroupDetailPage({
     t("days.friday"),
     t("days.saturday"),
   ];
-
-  const enrolledIds = new Set((g.groupStudents || []).map((gs: any) => gs.studentId));
-  const availableStudents = (allStudents as any[])
-    .filter((s: any) => !enrolledIds.has(s.id))
-    .map((s: any) => ({ id: s.id, fullName: s.fullName, gradeLevel: s.gradeLevel ?? null }));
 
   return (
     <div className="space-y-6 p-4 md:p-6">
@@ -124,9 +117,6 @@ export default async function GroupDetailPage({
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">{t("groups.schedule")}</CardTitle>
-          <div className="flex items-center gap-2">
-            <ExtraSessionDialog groupId={g.id} />
-          </div>
         </CardHeader>
         <CardContent>
           {g.scheduleSlots.length === 0 ? (
@@ -151,7 +141,7 @@ export default async function GroupDetailPage({
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">{t("groups.detail_students")}</CardTitle>
-          <EnrollStudentDialog groupId={g.id} availableStudents={availableStudents} />
+          <EnrollStudentDialog groupId={g.id} />
         </CardHeader>
         <CardContent>
           {g.groupStudents.length === 0 ? (
@@ -178,51 +168,20 @@ export default async function GroupDetailPage({
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{t("groups.recent_sessions")}</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-base">{t("groups.extra_sessions_list")}</CardTitle>
+          <ExtraSessionDialog groupId={g.id} />
         </CardHeader>
         <CardContent>
-          {g.sessions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {t("groups.no_sessions_msg")}
-            </p>
+          {(g.extraSessions || []).length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t("groups.no_extra_sessions")}</p>
           ) : (
             <ul className="space-y-2">
-              {g.sessions.map((s) => (
-                <li key={s.id} className="flex items-center justify-between text-sm">
-                  <Link href={`/attendance/session/${s.id}`} className="hover:underline">
-                    {formatDate(s.sessionDate)} · {s.startTime}
-                  </Link>
-                  <Badge variant={s.status === "completed" ? "success" : "secondary"}>
-                    {s.status === "completed"
-                      ? t("groups.session_completed")
-                      : s.status === "cancelled"
-                        ? t("groups.session_cancelled")
-                        : t("groups.session_scheduled")}
-                  </Badge>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{t("groups.detail_sessions")}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {g.extraSessions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {t("groups.no_sessions_msg")}
-            </p>
-          ) : (
-            <ul className="space-y-2">
-              {g.extraSessions.map((s: any) => (
+              {(g.extraSessions as any[]).map((s) => (
                 <li key={s.id} className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm">
-                  <div className="flex items-center gap-2">
-                    <Badge variant={s.type === "extra" ? "secondary" : "outline"}>
-                      {s.type === "extra" ? t("groups.extra_session") : t("groups.makeup_session")}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant={s.type === "makeup" ? "outline" : "secondary"}>
+                      {s.type === "makeup" ? t("groups.makeup_session") : t("groups.extra_session")}
                     </Badge>
                     <Link href={`/attendance/session/${s.id}`} className="hover:underline">
                       {formatDate(s.sessionDate)} · {s.startTime} – {s.endTime}

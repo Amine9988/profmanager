@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Wallet, GraduationCap, Users, Download, Loader2 } from "lucide-react";
+import { Wallet, GraduationCap, Users, Download, Loader2 } from "@/lib/lucide";
 import { useT } from "@/lib/i18n-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";

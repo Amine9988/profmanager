@@ -4,7 +4,7 @@ import { useState } from "react";
 import { createBackup } from "@/server/actions/backup";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Download, Upload, Loader2, Shield } from "lucide-react";
+import { Download, Upload, Loader2, Shield } from "@/lib/lucide";
 import { toast } from "sonner";
 import { useT } from "@/lib/i18n";
 

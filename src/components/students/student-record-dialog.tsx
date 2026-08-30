@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, FileText, GraduationCap, School, Phone, Users, CreditCard, CalendarX2, MessageSquare } from "lucide-react";
+import { Loader2, FileText, GraduationCap, School, Phone, Users, CreditCard, CalendarX2, MessageSquare } from "@/lib/lucide";
 import { useT, useI18n } from "@/lib/i18n";
 import { formatCurrency, initials, sessionCounterDisplay } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -36,7 +36,7 @@ type RecordData = {
     sessionsIncluded: number | null;
     consumedSessions: number;
     paidSessions: number;
-    group: { id: string; name: string; pricePerSession: number; color: string | null } | null;
+    group: { id: string; name: string; pricePerSession: number; color: string | null; roomName?: string | null } | null;
     subject: { id: string; name: string; color: string | null } | null;
   }[];
   payments: {
@@ -176,6 +176,7 @@ function RecordContent({ data, t }: { data: RecordData; t: (key: string) => stri
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <InfoCard icon={<Phone className="size-4" />} label={t("students.phone_label")} value={s.phone} dir="ltr" />
         <InfoCard icon={<Phone className="size-4" />} label={t("students.father_phone_label")} value={s.fatherPhone} dir="ltr" />
+        <InfoCard icon={<FileText className="size-4" />} label={t("students.parent_email_label")} value={s.email} dir="ltr" />
       </section>
 
       {/* Financial summary */}
@@ -207,6 +208,9 @@ function RecordContent({ data, t }: { data: RecordData; t: (key: string) => stri
               <Badge key={gs.id} variant="secondary" className="gap-1.5 py-1">
                 <span className="size-2 rounded-full" style={{ background: gs.group?.color || gs.subject?.color || "#888" }} />
                 {gs.group?.name ?? "?"}
+                {gs.group?.roomName ? (
+                  <span className="font-normal text-muted-foreground"> · {gs.group.roomName}</span>
+                ) : null}
 {(() => {
                   const d = sessionCounterDisplay(gs.sessionsIncluded, gs.consumedSessions, gs.paidSessions);
                   if (d.state === "hidden") return null;
@@ -267,6 +271,9 @@ function RecordContent({ data, t }: { data: RecordData; t: (key: string) => stri
                     <td className="px-3 py-2 font-medium">
                       <span className="mr-1.5 inline-block size-2 rounded-full" style={{ background: gs.group?.color || gs.subject?.color || "#888" }} />
                       {gs.group?.name ?? "?"}
+                      {gs.group?.roomName ? (
+                        <span className="font-normal text-muted-foreground"> · {gs.group.roomName}</span>
+                      ) : null}
                     </td>
                     <td className="px-3 py-2">
 {(() => {

@@ -3,8 +3,9 @@
 import { getTenantContext } from "@/lib/auth";
 import { getSchoolYearSettings } from "./sessions";
 import { checkAbsenceAlerts } from "./notifications";
-import { autoMarkAbsentForPastSessions } from "./attendance";
+import { scheduleAttendanceMaintenance } from "./attendance";
 import { isPaymentOverdue } from "@/lib/payments/overdue";
+import { runThrottled } from "@/lib/bg-jobs";
 
 const now = new Date();
 const y = now.getFullYear();
@@ -36,34 +37,34 @@ export async function getSessionStatsDashboard() {
 export async function getDashboardKPIs() {
   const { tenantId, supabase } = await getTenantContext();
 
-  void autoMarkAbsentForPastSessions();
+  void scheduleAttendanceMaintenance();
 
   const [
     { count: activeStudents },
     { count: activeGroups },
     { data: todaySessions },
     { data: currentMonthPayments },
-    { data: totalPayments },
-    { data: overduePayments },
     { data: recentSessionIds },
     { data: todayPayments },
     { data: groupCounts },
     { count: teacherCount },
     { count: subjectCount },
-    { data: cashMovements },
   ] = await Promise.all([
     supabase.from("students").select("*", { count: "exact", head: true }).eq("tenantId", tenantId).eq("status", "active"),
     supabase.from("groups").select("*", { count: "exact", head: true }).eq("tenantId", tenantId).eq("status", "active"),
     supabase.from("sessions").select("id, sessionDate, startTime, endTime, status, groups(id, name)").eq("tenantId", tenantId).gte("sessionDate", todayStr).lte("sessionDate", todayStr).order("startTime", { ascending: true }),
-    supabase.from("payments").select("amountPaid, amountDue, status").eq("tenantId", tenantId).eq("month", firstOfCurrentMonth),
-    supabase.from("payments").select("amountPaid, amountDue").eq("tenantId", tenantId),
-    supabase.from("payments").select("amountPaid, amountDue, month").eq("tenantId", tenantId).lte("month", firstOfCurrentMonth),
+    supabase.from("payments").select("amountPaid, amountDue, status").eq("tenantId", tenantId).eq("month", firstOfCurrentMonth).limit(5000),
     supabase.from("sessions").select("id").eq("tenantId", tenantId).lte("sessionDate", todayStr).order("sessionDate", { ascending: false }).limit(20),
     supabase.from("payments").select("id, studentId, amountPaid, status, students(fullName)").eq("tenantId", tenantId).eq("month", firstOfCurrentMonth).not("paidAt", "is", null).gte("paidAt", startOfDay.toISOString()).lte("paidAt", endOfDay.toISOString()),
     supabase.from("groups").select("id, name, group_students(count)").eq("tenantId", tenantId).eq("status", "active"),
     supabase.from("teachers").select("*", { count: "exact", head: true }).eq("tenantId", tenantId),
     supabase.from("subjects").select("*", { count: "exact", head: true }).eq("tenantId", tenantId),
-    supabase.from("cash_movements").select("type, amount").eq("tenantId", tenantId),
+  ]);
+
+  const { paymentStatusCounts, cashMovementStats } = await import("@/lib/db/aggregates");
+  const [badgeCounts, cash] = await Promise.all([
+    paymentStatusCounts(tenantId, firstOfCurrentMonth),
+    cashMovementStats(tenantId),
   ]);
 
   const pastSessionIdList = (recentSessionIds || []).map((s: any) => s.id);
@@ -79,17 +80,17 @@ export async function getDashboardKPIs() {
     : 0;
 
   const revenueThisMonth = (currentMonthPayments || []).reduce((sum: number, p: any) => sum + Number(p.amountPaid), 0);
-  const totalDue = (totalPayments || []).reduce((sum: number, p: any) => sum + Number(p.amountDue), 0);
-  const totalPaid = (totalPayments || []).reduce((sum: number, p: any) => sum + Number(p.amountPaid), 0);
-  const overdueSubs = (overduePayments || []).filter((p: any) => isPaymentOverdue(Number(p.amountDue), Number(p.amountPaid), p.month)).length;
-  const upToDateSubs = (overduePayments || []).filter((p: any) => Number(p.amountPaid) >= Number(p.amountDue)).length;
+  const totalDue = (currentMonthPayments || []).reduce((sum: number, p: any) => sum + Number(p.amountDue), 0);
+  const totalPaid = (currentMonthPayments || []).reduce((sum: number, p: any) => sum + Number(p.amountPaid), 0);
+  const overdueSubs = badgeCounts.overdue;
+  const upToDateSubs = Math.max(0, (badgeCounts.total ?? 0) - badgeCounts.overdue);
 
-  void checkAbsenceAlerts();
+  runThrottled("absence-alerts", 15 * 60 * 1000, () => checkAbsenceAlerts());
 
   const recoveryRate = totalDue > 0 ? Math.round((totalPaid / totalDue) * 100) : 100;
 
-  const caisseIncome = (cashMovements || []).filter((m: any) => m.type === "income").reduce((s: number, m: any) => s + Number(m.amount), 0);
-  const caisseExpense = (cashMovements || []).filter((m: any) => m.type === "expense").reduce((s: number, m: any) => s + Number(m.amount), 0);
+  const caisseIncome = cash.totalIncome;
+  const caisseExpense = cash.totalExpense;
 
   return {
     activeStudents: activeStudents ?? 0,
@@ -112,7 +113,11 @@ export async function getDashboardKPIs() {
     overdueSubs,
     upToDateSubs,
     expiringSubs: 0,
-    totalDebt: (overduePayments || []).reduce((sum: number, p: any) => sum + Math.max(Number(p.amountDue) - Number(p.amountPaid), 0), 0),
+    totalDebt: (currentMonthPayments || []).reduce((sum: number, p: any) => {
+      const due = Number(p.amountDue);
+      const paid = Number(p.amountPaid);
+      return sum + (paid < due ? due - paid : 0);
+    }, 0),
     caisseBalance: caisseIncome - caisseExpense,
     teacherCount: teacherCount ?? 0,
     subjectCount: subjectCount ?? 0,
@@ -129,7 +134,8 @@ export async function getOverdueStudents() {
     .from("payments")
     .select("studentId, amountDue, amountPaid, month, students(fullName, phone)")
     .eq("tenantId", tenantId)
-    .lte("month", firstOfCurrentMonth);
+    .eq("month", firstOfCurrentMonth)
+    .limit(5000);
 
   const byStudent = new Map<string, { studentId: string; fullName: string; phone: string | null; balance: number }>();
 

@@ -26,6 +26,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
+    const { computeTeacherDues, snapshotSessionsForAmount } = await import("@/lib/teacher-dues");
+    const monthKey = String(periodMonth).slice(0, 7);
+    const dues = await computeTeacherDues(supabase, tenantId, teacherId, monthKey);
+    const covered = dues ? snapshotSessionsForAmount(dues.sessions, Number(amount)) : [];
+
     const { data: payment, error } = await supabase
       .from("teacher_payments")
       .insert({
@@ -37,6 +42,7 @@ export async function POST(req: NextRequest) {
         status: "paid",
         paidAt: new Date().toISOString(),
         notes: notes || null,
+        coveredSessions: covered.length ? JSON.stringify(covered) : null,
       })
       .select("*, teachers(firstName, lastName)")
       .single();

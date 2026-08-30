@@ -33,6 +33,8 @@ export default async function SettingsPage() {
             tenant={{
               name: tenant.name,
               schoolPhone: tenant.schoolPhone,
+              schoolEmail: tenant.schoolEmail,
+              smtpPassword: tenant.smtpPassword,
               schoolLogo: tenant.schoolLogo,
             }}
           />

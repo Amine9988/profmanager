@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Lock, Eye, EyeOff, Check } from "lucide-react";
+import { Lock, Eye, EyeOff, Check } from "@/lib/lucide";
 import { toast } from "sonner";
 
 export function ChangePasswordCard() {

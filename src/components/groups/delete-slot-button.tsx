@@ -4,7 +4,7 @@ import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { deleteScheduleSlot } from "@/server/actions/groups";
 import { Button } from "@/components/ui/button";
-import { X } from "lucide-react";
+import { X } from "@/lib/lucide";
 import { toast } from "sonner";
 import { useT } from "@/lib/i18n";
 

@@ -2,7 +2,7 @@
 
 import { Suspense, useRef, useState, useCallback, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import { CheckCircle2, Camera, Smartphone } from "lucide-react";
+import { CheckCircle2, Camera, Smartphone } from "@/lib/lucide";
 import { extractStudentIdFromQr } from "@/lib/student-qr";
 
 function beep() {

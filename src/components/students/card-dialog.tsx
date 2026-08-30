@@ -8,7 +8,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
+import { Loader2 } from "@/lib/lucide";
 import { useT } from "@/lib/i18n";
 import { jsPDF } from "jspdf";
 import { generateQRCode } from "@/lib/qrcode-gen";

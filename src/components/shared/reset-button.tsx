@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useT } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Loader2, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, Loader2, CheckCircle2 } from "@/lib/lucide";
 
 export function ResetButton() {
   const [step, setStep] = useState<"idle" | "confirm" | "loading" | "done">("idle");

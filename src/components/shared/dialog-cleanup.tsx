@@ -1,95 +1,123 @@
 "use client";
 
 import { useEffect } from "react";
+import {
+  forceUnlockUi,
+  hasBlockingOverlay,
+  isInsideOpenOverlay,
+  isUiLocked,
+  scheduleUnlock,
+  unlockForField,
+  unlockUi,
+} from "@/lib/ui-unlock";
 
-function hasBlockingOverlay() {
-  return Boolean(
-    document.querySelector(
-      [
-        '[data-slot="dialog-content"][data-state="open"]',
-        '[data-slot="dialog-overlay"][data-state="open"]',
-        '[data-slot="select-content"][data-state="open"]',
-        '[data-radix-dialog-content][data-state="open"]',
-        '[data-radix-select-content][data-state="open"]',
-        '[role="dialog"][data-state="open"]',
-        '[data-radix-popper-content-wrapper]',
-        '[data-state="open"][role="dialog"]',
-      ].join(", ")
-    )
-  );
-}
+export {
+  forceUnlockUi,
+  hasBlockingOverlay,
+  scheduleUnlock,
+  unlockForField,
+  unlockUi,
+};
 
-function unlockAll() {
-  if (hasBlockingOverlay()) return;
-  for (const el of [document.body, document.documentElement]) {
-    if (el.style.pointerEvents === "none") el.style.removeProperty("pointer-events");
-    if (el.style.overflow === "hidden") el.style.removeProperty("overflow");
-    if (el.style.paddingRight) {
-      // Radix adds padding-right for scrollbar compensation
-      const pr = el.style.paddingRight;
-      if (pr && parseInt(pr, 10) > 0) el.style.removeProperty("padding-right");
-    }
-    if (el.hasAttribute("data-scroll-locked")) el.removeAttribute("data-scroll-locked");
-  }
-  // Restore Radix-hidden siblings (main content)
-  const main = document.querySelector("main, #__next, [data-radix-scroll-area-viewport], .flex.h-screen") as HTMLElement | null;
-  if (main) {
-    if (main.hasAttribute("inert") && !main.querySelector("[data-state='open']")) {
-      main.removeAttribute("inert");
-    }
-    if (main.getAttribute("aria-hidden") === "true" && !document.querySelector('[aria-hidden="true"][data-state="open"]')) {
-      // Only remove if no open dialog is intentionally hiding it
-      // Check if main itself was hidden by Radix hideOthers
-      if (!hasBlockingOverlay()) main.removeAttribute("aria-hidden");
-    }
-  }
-  // Also clean any stale aria-hidden/inert on body children
-  for (const el of document.querySelectorAll("[inert]")) {
-    if (!el.closest('[data-state="open"]') && !hasBlockingOverlay()) (el as HTMLElement).removeAttribute("inert");
-  }
-  for (const el of document.querySelectorAll('[aria-hidden="true"]')) {
-    // Keep print root aria-hidden, but restore main
-    if ((el as HTMLElement).id === "sc-print-root") continue;
-    if (!el.closest('[data-state="open"]') && !hasBlockingOverlay() && el !== document.body && el !== document.documentElement) {
-      // Only remove if it looks like Radix added it (direct child of body)
-      if (el.parentElement === document.body) (el as HTMLElement).removeAttribute("aria-hidden");
-    }
-  }
-}
-
+/**
+ * App-wide watchdog: never leave the UI non-interactive after overlays close.
+ * Mounted once from the root layout.
+ */
 export function DialogCleanup() {
   useEffect(() => {
-    const observer = new MutationObserver(() => unlockAll());
+    const tick = () => unlockUi();
+
+    const observer = new MutationObserver(() => {
+      queueMicrotask(tick);
+    });
     observer.observe(document.body, {
       attributes: true,
-      attributeFilter: ["style", "inert", "aria-hidden", "data-scroll-locked"],
+      attributeFilter: [
+        "style",
+        "inert",
+        "aria-hidden",
+        "data-scroll-locked",
+        "class",
+      ],
+      childList: true,
       subtree: false,
     });
     observer.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["style", "inert", "aria-hidden", "data-scroll-locked"],
+      attributeFilter: ["style", "inert", "aria-hidden", "data-pm-modal-open"],
     });
-    // Also observe main for aria-hidden/inert
-    const mainEl = document.querySelector("main");
-    if (mainEl) observer.observe(mainEl, { attributes: true, attributeFilter: ["aria-hidden", "inert", "style"] });
+
+    const onPointerDown = (e: PointerEvent) => {
+      const t = e.target as Element | null;
+      if (!t) return;
+      if (isInsideOpenOverlay(t)) return;
+      if (isUiLocked() || hasBlockingOverlay()) {
+        // Click outside any real modal → force clear ghosts + locks
+        forceUnlockUi();
+      }
+    };
+
+    const onFocusIn = (e: FocusEvent) => {
+      unlockForField(e.target);
+    };
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setTimeout(unlockAll, 250);
+      if (e.key === "Escape") scheduleUnlock(50);
+      if (e.ctrlKey && e.shiftKey && (e.key === "u" || e.key === "U")) {
+        e.preventDefault();
+        forceUnlockUi();
+      }
+      const active = document.activeElement;
+      if (
+        active &&
+        (active.tagName === "INPUT" ||
+          active.tagName === "TEXTAREA" ||
+          (active as HTMLElement).isContentEditable) &&
+        !isInsideOpenOverlay(active)
+      ) {
+        if (isUiLocked()) forceUnlockUi();
+      }
     };
-    const onFocusIn = () => {
-      // If focus is on body while no overlay, try to unlock
-      if (document.activeElement === document.body && !hasBlockingOverlay()) setTimeout(unlockAll, 50);
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        forceUnlockUi();
+        scheduleUnlock(0);
+      }
     };
-    window.addEventListener("keydown", onKey);
-    document.addEventListener("focusin", onFocusIn);
-    unlockAll();
-    const interval = setInterval(unlockAll, 1500);
+
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("focusin", onFocusIn, true);
+    window.addEventListener("keydown", onKey, true);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", onVisibility);
+    window.addEventListener("pageshow", onVisibility);
+
+    tick();
+    const interval = setInterval(() => {
+      if (isUiLocked()) forceUnlockUi();
+      else unlockUi();
+    }, 300);
+
+    const api = { unlock: forceUnlockUi, soft: unlockUi };
+    (window as unknown as { __pmUnlockUi?: () => void }).__pmUnlockUi = forceUnlockUi;
+    (window as unknown as { __pmUi?: typeof api }).__pmUi = api;
 
     return () => {
       observer.disconnect();
-      window.removeEventListener("keydown", onKey);
-      document.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("focusin", onFocusIn, true);
+      window.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", onVisibility);
+      window.removeEventListener("pageshow", onVisibility);
       clearInterval(interval);
+      try {
+        delete (window as unknown as { __pmUnlockUi?: () => void }).__pmUnlockUi;
+        delete (window as unknown as { __pmUi?: typeof api }).__pmUi;
+      } catch {
+        /* ignore */
+      }
     };
   }, []);
 

@@ -1,6 +1,6 @@
 {
   "name": "profmanager-desktop",
-  "version": "1.0.32",
+  "version": "1.0.36",
   "description": "ProfManager — Gestion de cours particuliers",
   "main": "main.js",
   "scripts": {
@@ -46,6 +46,7 @@
       "public/icon.icns",
       "public/icon.png"
     ],
+    "electronVersion": "35.7.5",
     "afterPack": "./after-pack.js",
     "extraResources": [
       {
@@ -68,7 +69,7 @@
         "to": "."
       }
     ],
-    "icon": "public/icon.icns",
+    "icon": "icon.png",
     "win": {
       "target": [
         {
@@ -80,7 +81,7 @@
       ],
       "signAndEditExecutable": true,
       "signExecutable": false,
-      "icon": "public/icon.ico"
+      "icon": "icon.ico"
     },
     "mac": {
       "target": [
@@ -92,10 +93,12 @@
           ]
         }
       ],
-      "icon": "public/icon.icns",
+      "icon": "icon.icns",
       "category": "public.app-category.education",
-      "hardenedRuntime": true,
+      "identity": null,
+      "hardenedRuntime": false,
       "gatekeeperAssess": false,
+      "forceCodeSigning": false,
       "entitlements": "entitlements.mac.plist",
       "entitlementsInherit": "entitlements.mac.plist",
       "artifactName": "ProfManager Setup ${version}-${arch}.${ext}",
@@ -107,24 +110,38 @@
     },
     "dmg": {
       "title": "ProfManager ${version}",
-      "backgroundColor": "#ecf2f8",
-      "icon": "public/icon.icns",
-      "iconSize": 80,
+      "background": "dmg-background.png",
+      "icon": "icon.icns",
+      "iconSize": 96,
       "window": {
-        "width": 540,
-        "height": 380
+        "width": 560,
+        "height": 480
       },
       "contents": [
         {
           "x": 140,
-          "y": 200,
+          "y": 210,
           "type": "file"
         },
         {
           "x": 400,
-          "y": 200,
+          "y": 210,
           "type": "link",
           "path": "/Applications"
+        },
+        {
+          "x": 140,
+          "y": 380,
+          "type": "file",
+          "path": "install-mac.command",
+          "name": "تثبيت ProfManager.command"
+        },
+        {
+          "x": 400,
+          "y": 380,
+          "type": "file",
+          "path": "open-first.html",
+          "name": "اقرأني أولاً.html"
         }
       ]
     },

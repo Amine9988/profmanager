@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { Trash2, RotateCcw, CreditCard, Banknote, AlertTriangle, Lock } from "lucide-react";
+import { Trash2, RotateCcw, CreditCard, Banknote, AlertTriangle, Lock } from "@/lib/lucide";
 import { toast } from "sonner";
 
 interface DeletedItem {
@@ -28,6 +28,9 @@ export default function TrashPage() {
   const [permanentDelete, setPermanentDelete] = useState<DeletedItem | null>(null);
   const [emptyTrash, setEmptyTrash] = useState(false);
   const [passwordDialog, setPasswordDialog] = useState<"permanentDelete" | "emptyTrash" | null>(null);
+  // Kept separate from `permanentDelete` so closing the confirm dialog before
+  // asking for the password does not lose the item being deleted.
+  const [pendingItem, setPendingItem] = useState<DeletedItem | null>(null);
   const [password, setPassword] = useState("");
   const [verifying, setVerifying] = useState(false);
   const [showResetDialog, setShowResetDialog] = useState(false);
@@ -70,6 +73,8 @@ export default function TrashPage() {
 
   async function verifyPasswordAndProceed() {
     if (!password.trim()) return;
+    const action = passwordDialog;
+    const target = pendingItem;
     setVerifying(true);
     try {
       const res = await fetch("/api/auth/verify-password", {
@@ -80,9 +85,9 @@ export default function TrashPage() {
       if (res.ok) {
         setPasswordDialog(null);
         setPassword("");
-        if (passwordDialog === "permanentDelete" && permanentDelete) {
-          await executePermanentDelete();
-        } else if (passwordDialog === "emptyTrash") {
+        if (action === "permanentDelete") {
+          await executePermanentDelete(target);
+        } else if (action === "emptyTrash") {
           await executeEmptyTrash();
         }
       } else {
@@ -95,19 +100,20 @@ export default function TrashPage() {
     }
   }
 
-  async function executePermanentDelete() {
-    if (!permanentDelete) return;
+  async function executePermanentDelete(item: DeletedItem | null) {
+    if (!item) return;
     try {
-      const res = await fetch(`/api/trash/${permanentDelete.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/trash/${item.id}`, { method: "DELETE" });
       if (res.ok) {
         toast.success(t("trash.delete_permanently_success"));
-        setPermanentDelete(null);
         fetchTrash();
       } else {
         toast.error(t("common.error"));
       }
     } catch {
       toast.error(t("common.error"));
+    } finally {
+      setPendingItem(null);
     }
   }
 
@@ -224,7 +230,7 @@ export default function TrashPage() {
         </div>
       )}
 
-      <Dialog open={!!permanentDelete} onOpenChange={() => setPermanentDelete(null)}>
+      <Dialog open={!!permanentDelete} onOpenChange={(open) => { if (!open) setPermanentDelete(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
@@ -235,7 +241,15 @@ export default function TrashPage() {
           <p className="text-sm text-muted-foreground">{t("trash.delete_permanently_confirm")}</p>
           <DialogFooter className="flex gap-2">
             <Button variant="outline" onClick={() => setPermanentDelete(null)}>{t("common.cancel")}</Button>
-            <Button variant="destructive" onClick={() => { setPassword(""); setPasswordDialog("permanentDelete"); }}>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setPendingItem(permanentDelete);
+                setPermanentDelete(null);
+                setPassword("");
+                setPasswordDialog("permanentDelete");
+              }}
+            >
               <Lock className="size-4 mr-1" />
               {t("trash.continue")}
             </Button>
@@ -243,7 +257,7 @@ export default function TrashPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={emptyTrash} onOpenChange={() => setEmptyTrash(false)}>
+      <Dialog open={emptyTrash} onOpenChange={(open) => { if (!open) setEmptyTrash(false); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
@@ -254,7 +268,14 @@ export default function TrashPage() {
           <p className="text-sm text-muted-foreground">{t("trash.empty_trash_confirm")}</p>
           <DialogFooter className="flex gap-2">
             <Button variant="outline" onClick={() => setEmptyTrash(false)}>{t("common.cancel")}</Button>
-            <Button variant="destructive" onClick={() => { setPassword(""); setPasswordDialog("emptyTrash"); }}>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setEmptyTrash(false);
+                setPassword("");
+                setPasswordDialog("emptyTrash");
+              }}
+            >
               <Lock className="size-4 mr-1" />
               {t("trash.continue")}
             </Button>
@@ -262,7 +283,16 @@ export default function TrashPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!passwordDialog} onOpenChange={() => { setPasswordDialog(null); setPassword(""); }}>
+      <Dialog
+        open={!!passwordDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPasswordDialog(null);
+            setPassword("");
+            setPendingItem(null);
+          }
+        }}
+      >
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -286,7 +316,7 @@ export default function TrashPage() {
             {t("settings.password_forgot")}
           </button>
           <DialogFooter className="flex gap-2">
-            <Button variant="outline" onClick={() => { setPasswordDialog(null); setPassword(""); }}>{t("common.cancel")}</Button>
+            <Button variant="outline" onClick={() => { setPasswordDialog(null); setPassword(""); setPendingItem(null); }}>{t("common.cancel")}</Button>
             <Button variant="destructive" onClick={verifyPasswordAndProceed} disabled={verifying || !password.trim()}>
               {verifying ? "..." : t("trash.confirm")}
             </Button>

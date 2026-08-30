@@ -9,33 +9,57 @@ import { sessionEndTimestamp } from "@/lib/session-time";
 
 export type ActionResult = { error?: string; success?: boolean; id?: string };
 
-export async function getStudents() {
-  const t0 = Date.now();
-  const { tenantId, supabase } = await getTenantContext();
-  const t1 = Date.now();
+export type GetStudentsOpts = {
+  page?: number;
+  limit?: number;
+  q?: string;
+  status?: string;
+};
 
-  const { data: students, error } = await supabase
+/** Paginated student list — never loads the full table into memory. */
+export async function getStudents(opts: GetStudentsOpts = {}) {
+  const page = Math.max(1, opts.page ?? 1);
+  const limit = Math.min(100, Math.max(1, opts.limit ?? 50));
+  const offset = (page - 1) * limit;
+  const q = (opts.q || "").trim();
+
+  const { tenantId, supabase } = await getTenantContext();
+
+  let query = supabase
     .from("students")
     .select("id, fullName, gradeLevel, schoolName, phone, fatherPhone, email, address, notes, monthlyFee, subscriptionStart, status, clientType")
     .eq("tenantId", tenantId)
     .order("fullName", { ascending: true })
-    .limit(100);
-  const t2 = Date.now();
-  console.log(`[perf] getStudents: getTenantContext ${t1-t0}ms, query ${t2-t1}ms, total ${Date.now()-t0}ms, rows=${students?.length||0}`);
-  if (error) console.log(`[perf] getStudents error`, error);
+    .range(offset, offset + limit - 1);
+
+  if (opts.status) query = query.eq("status", opts.status);
+  if (q) query = query.or(`fullName.ilike.%${q}%,phone.ilike.%${q}%`);
+
+  let countQ = supabase
+    .from("students")
+    .select("id", { count: "exact", head: true })
+    .eq("tenantId", tenantId);
+  if (opts.status) countQ = countQ.eq("status", opts.status);
+  if (q) countQ = countQ.or(`fullName.ilike.%${q}%,phone.ilike.%${q}%`);
+
+  const [{ data: students, error }, countRes] = await Promise.all([query, countQ as any]);
 
   if (error) {
     console.error("[getStudents] Query error:", error.message, "SQL:", error.details);
-    return [];
+    return { students: [] as any[], total: 0, page, limit };
   }
 
-  return (students || []).map((s: any) => ({
+  const rows = (students || []).map((s: any) => ({
     ...s,
-    groupStudents: ((s.groupStudents || s.group_students || []) as any[]).filter((gs: any) => gs.status === "active").map((gs: any) => ({
-      ...gs,
-      group: gs.groups ? { ...gs.groups, pricePerSession: Number(gs.groups.pricePerSession) } : null,
-    })),
-  })) as any;
+    groupStudents: ((s.groupStudents || s.group_students || []) as any[])
+      .filter((gs: any) => gs.status === "active")
+      .map((gs: any) => ({
+        ...gs,
+        group: gs.groups ? { ...gs.groups, pricePerSession: Number(gs.groups.pricePerSession) } : null,
+      })),
+  }));
+
+  return { students: rows as any[], total: (countRes?.count as number) ?? rows.length, page, limit };
 }
 
 export async function getStudent(studentId: string) {
@@ -43,17 +67,35 @@ export async function getStudent(studentId: string) {
 
   const { data: student } = await supabase
     .from("students")
-    .select("*, group_students(*, groups(*, subjects(*))), attendances(*, sessions(*)), payments(*)")
+    .select("*, group_students(*, groups(*, subjects(*)))")
     .eq("id", studentId)
     .eq("tenantId", tenantId)
     .single();
 
   if (!student) return null;
 
-  const rawAttendances = Array.isArray(student.attendances) ? student.attendances : student.attendances ? [student.attendances] : [];
+  const [{ data: attendancesData }, { data: paymentsData }, { data: roomsData }] = await Promise.all([
+    supabase
+      .from("attendances")
+      .select("*, sessions(*)")
+      .eq("studentId", studentId)
+      .eq("tenantId", tenantId)
+      .order("markedAt", { ascending: false })
+      .limit(40),
+    supabase
+      .from("payments")
+      .select("*")
+      .eq("studentId", studentId)
+      .eq("tenantId", tenantId)
+      .order("month", { ascending: false })
+      .limit(36),
+    supabase.from("rooms").select("id, name").eq("tenantId", tenantId),
+  ]);
+  const roomById = Object.fromEntries((roomsData || []).map((r: any) => [r.id, r.name]));
 
-  // Resolve group names per session. The local shim can't join the same table
-  // twice in one query, so fetch them separately.
+  const rawAttendances = attendancesData || [];
+  const payments = paymentsData || [];
+
   const sessionIds = [...new Set(rawAttendances.map((a: any) => a.sessionId).filter(Boolean))];
   const { data: sessionGroups } = await supabase
     .from("sessions")
@@ -77,8 +119,6 @@ export async function getStudent(studentId: string) {
     }
   }
 
-  // Hide any attendance for a session that ended before the student enrolled
-  // in that group (e.g. enrolled on 14 Aug, an 8 Aug session must not appear).
   const visibleAttendances = rawAttendances.filter((a: any) => {
     const groupId = a.sessions?.groupId ?? null;
     if (!groupId) return true;
@@ -94,20 +134,26 @@ export async function getStudent(studentId: string) {
     monthlyFee: Number(student.monthlyFee),
     groupStudents: ((student.group_students as any[]) || []).filter((gs: any) => gs.status === "active").map((gs: any) => {
       const sessionsIncluded = gs.groups?.sessionsIncluded != null ? Number(gs.groups.sessionsIncluded) : null;
-      const paidCount = (student.payments || []).filter((p: any) => p.groupId === gs.groupId && Number(p.amountPaid) > 0).length;
+      const paidCount = payments.filter((p: any) => p.groupId === gs.groupId && Number(p.amountPaid) > 0).length;
       return {
         ...gs,
         consumedSessions: gs.consumedSessions != null ? Number(gs.consumedSessions) : 0,
         paidSessions: sessionsIncluded != null ? paidCount * sessionsIncluded : 0,
-        group: gs.groups ? { ...gs.groups, pricePerSession: Number(gs.groups.pricePerSession) } : null,
+        group: gs.groups
+          ? {
+              ...gs.groups,
+              pricePerSession: Number(gs.groups.pricePerSession),
+              roomName: gs.groups.roomId ? roomById[gs.groups.roomId] || null : null,
+            }
+          : null,
       };
     }),
-    attendances: visibleAttendances.sort((a: any, b: any) => new Date(b.markedAt).getTime() - new Date(a.markedAt).getTime()).slice(0, 20).map((a: any) => ({
+    attendances: visibleAttendances.slice(0, 20).map((a: any) => ({
       ...a,
       session: { ...a.sessions, groupName: sessionGroupMap.get(a.sessionId) || null },
     })),
     guardians: (student.guardians as any[]) || [],
-    payments: (Array.isArray(student.payments) ? student.payments : student.payments ? [student.payments] : []).map((p: any) => ({
+    payments: payments.map((p: any) => ({
       ...p,
       groupId: p.groupId ?? null,
       groupName: p.groupId ? groupNameMap.get(p.groupId) || null : null,
@@ -224,6 +270,13 @@ export async function updateStudent(studentId: string, _prevState: ActionResult,
     if (!result || result.length === 0) {
       return { error: t("errors.student_not_found") };
     }
+
+    await ctx.supabase
+      .from("group_students")
+      .update({ clientType: parsed.data.clientType })
+      .eq("studentId", studentId)
+      .eq("tenantId", ctx.tenantId)
+      .eq("status", "active");
 
     await createAuditLog({
       tenantId: ctx.tenantId, userId: ctx.userId,

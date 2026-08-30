@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { useT } from "@/lib/i18n";
 import { formatCurrency } from "@/lib/utils";
-import { Plus, Tag } from "lucide-react";
+import { Plus, Tag } from "@/lib/lucide";
 
 type Subject = { id: string; name: string; color: string };
 

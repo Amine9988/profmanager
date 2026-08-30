@@ -6,6 +6,11 @@ CREATE TABLE IF NOT EXISTS tenants (
   schoolYearStart TEXT,
   schoolYearEnd TEXT,
   timezone TEXT,
+  schoolPhone TEXT,
+  schoolLogo TEXT,
+  schoolEmail TEXT,
+  smtpPassword TEXT,
+  smtpHost TEXT,
   trialStartsAt TEXT,
   trialEndsAt TEXT,
   createdAt TEXT NOT NULL,
@@ -132,6 +137,7 @@ CREATE TABLE IF NOT EXISTS teacher_payments (
   status TEXT NOT NULL DEFAULT 'pending',
   paidAt TEXT,
   notes TEXT,
+  coveredSessions TEXT,
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL
 );
@@ -191,6 +197,8 @@ CREATE TABLE IF NOT EXISTS group_students (
   clientType TEXT NOT NULL DEFAULT 'institution',
   remainingSessions INTEGER,
   consumedSessions INTEGER DEFAULT 0,
+  renewalNoticeSentAt TEXT,
+  renewalNoticeForPaid INTEGER,
   enrolledAt TEXT
 );
 

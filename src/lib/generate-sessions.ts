@@ -1,3 +1,5 @@
+import { formatLocalYmd } from "@/lib/session-dates";
+
 export interface ScheduleSlot {
   dayOfWeek?: number;
   day_of_week?: number;
@@ -27,9 +29,10 @@ export function generateSessionDates(
   current.setHours(0, 0, 0, 0);
 
   const end = new Date(endDate);
-  end.setHours(23, 59, 59, 999);
+  end.setHours(0, 0, 0, 0);
 
-  while (current <= end) {
+  // Inclusive: sessions on the last day of the school year / group end
+  while (current.getTime() <= end.getTime()) {
     const currentDay = current.getDay();
 
     for (const slot of slots) {
@@ -39,7 +42,7 @@ export function generateSessionDates(
 
       if (slotDay === currentDay) {
         sessions.push({
-          date: current.toISOString().split("T")[0],
+          date: formatLocalYmd(current),
           startTime: slotStart,
           endTime: slotEnd,
         });

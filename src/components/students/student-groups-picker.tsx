@@ -1,8 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { X, Building2, UserRound } from "lucide-react";
+import { X, Building2, UserRound } from "@/lib/lucide";
 import { Badge } from "@/components/ui/badge";
 import { useT } from "@/lib/i18n";
 
@@ -78,18 +77,22 @@ export function StudentGroupsPicker({
         </div>
       )}
       {remaining.length > 0 ? (
-        <Select value="" onValueChange={addGroup}>
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder={t("students.groups_add_placeholder")} />
-          </SelectTrigger>
-          <SelectContent>
-            {remaining.map((g) => (
-              <SelectItem key={g.id} value={g.id}>
-                {g.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <select
+          className="border-input flex h-9 w-full rounded-lg border bg-background px-3 text-sm shadow-sm outline-none focus-visible:border-ring focus-visible:ring-ring/40 focus-visible:ring-[3px]"
+          value=""
+          onChange={(e) => addGroup(e.target.value)}
+        >
+          <option value="" disabled>
+            {t("students.groups_add_placeholder")}
+          </option>
+          {remaining.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.name}
+            </option>
+          ))}
+        </select>
+      ) : groups.length === 0 ? (
+        <p className="text-xs text-muted-foreground">{t("groups.no_groups")}</p>
       ) : (
         <p className="text-xs text-muted-foreground">{t("students.groups_all_added")}</p>
       )}

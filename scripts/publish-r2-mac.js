@@ -39,17 +39,9 @@ async function upload(localPath, key, ct){
     process.exit(1);
   }
   const latestMac = path.join(DIST_DIR, "latest-mac.yml");
-  function walk(dir, acc = []) {
-    for (const name of fs.readdirSync(dir)) {
-      const p = path.join(dir, name);
-      if (fs.statSync(p).isDirectory()) walk(p, acc);
-      else acc.push(p);
-    }
-    return acc;
-  }
-  const files = walk(DIST_DIR).filter((f) =>
-    f.endsWith(".dmg") || f.endsWith(".blockmap")
-  );
+  const files = fs.readdirSync(DIST_DIR)
+    .filter((f) => (f.endsWith(".dmg") || f.endsWith(".blockmap")) && f.includes(VERSION) && !/\.exe/i.test(f))
+    .map((f) => path.join(DIST_DIR, f));
   console.log("Found files:", files.map((f) => path.basename(f)));
   if (!files.some((f) => f.endsWith(".dmg"))) {
     console.error("No .dmg to publish");

@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getTenantContext } from "@/lib/auth";
-import { consumeExpiredSessionCredits } from "@/server/actions/attendance";
+import { consumeExpiredSessionCredits, scheduleAttendanceMaintenance } from "@/server/actions/attendance";
 
 export const dynamic = "force-dynamic";
 
@@ -13,11 +13,11 @@ export async function GET(
     const { supabase, tenantId } = await getTenantContext();
 
     await consumeExpiredSessionCredits();
+    void scheduleAttendanceMaintenance();
 
-
-const { data: student } = await supabase
+    const { data: student } = await supabase
       .from("students")
-      .select("*, group_students(*, groups(*, subjects(*))), attendances(*, sessions(*)), payments(*)")
+      .select("*, group_students(*, groups(*, subjects(*)))")
       .eq("id", id)
       .eq("tenantId", tenantId)
       .single();
@@ -26,10 +26,29 @@ const { data: student } = await supabase
       return Response.json({ error: "Student not found" }, { status: 404 });
     }
 
-    const rawAttendances = Array.isArray(student.attendances) ? student.attendances : student.attendances ? [student.attendances] : [];
+    const [{ data: attendancesData }, { data: paymentsData }, { data: tenant }, { data: roomsData }] = await Promise.all([
+      supabase
+        .from("attendances")
+        .select("*, sessions(*)")
+        .eq("studentId", id)
+        .eq("tenantId", tenantId)
+        .order("markedAt", { ascending: false })
+        .limit(60),
+      supabase
+        .from("payments")
+        .select("*")
+        .eq("studentId", id)
+        .eq("tenantId", tenantId)
+        .order("month", { ascending: false })
+        .limit(36),
+      supabase.from("tenants").select("name, schoolPhone, schoolLogo").eq("id", tenantId).single(),
+      supabase.from("rooms").select("id, name").eq("tenantId", tenantId),
+    ]);
+    const roomById = Object.fromEntries((roomsData || []).map((r: any) => [r.id, r.name]));
 
-    // Resolve group names for each session. The local shim can't join the same
-    // table twice in one query, so fetch them in a separate call.
+    const rawAttendances = attendancesData || [];
+    const paymentsRaw = paymentsData || [];
+
     const sessionIds = [...new Set(rawAttendances.map((a: any) => a.sessionId).filter(Boolean))];
     const { data: sessionGroups } = await supabase
       .from("sessions")
@@ -42,11 +61,11 @@ const { data: student } = await supabase
       (sessionGroups || []).map((sg: any) => [sg.id, sg.groups?.color || null])
     );
 
-const groupStudents = ((student.group_students as any[]) || [])
+    const groupStudents = ((student.group_students as any[]) || [])
       .filter((gs: any) => gs.status === "active")
       .map((gs: any) => {
         const sessionsIncluded = gs.groups?.sessionsIncluded != null ? Number(gs.groups.sessionsIncluded) : null;
-        const paidCount = ((student.payments as any[]) || []).filter((p: any) => p.groupId === gs.groupId && Number(p.amountPaid) > 0).length;
+        const paidCount = paymentsRaw.filter((p: any) => p.groupId === gs.groupId && Number(p.amountPaid) > 0).length;
         return {
           id: gs.id,
           status: gs.status,
@@ -54,8 +73,18 @@ const groupStudents = ((student.group_students as any[]) || [])
           remainingSessions: gs.remainingSessions != null ? Number(gs.remainingSessions) : null,
           consumedSessions: gs.consumedSessions != null ? Number(gs.consumedSessions) : 0,
           paidSessions: sessionsIncluded != null ? paidCount * sessionsIncluded : 0,
-          group: gs.groups ? { id: gs.groups.id, name: gs.groups.name, pricePerSession: Number(gs.groups.pricePerSession || 0), color: gs.groups.color || null } : null,
-          subject: gs.groups?.subjects ? { id: gs.groups.subjects.id, name: gs.groups.subjects.name, color: gs.groups.subjects.color || null } : null,
+          group: gs.groups
+            ? {
+                id: gs.groups.id,
+                name: gs.groups.name,
+                pricePerSession: Number(gs.groups.pricePerSession || 0),
+                color: gs.groups.color || null,
+                roomName: gs.groups.roomId ? roomById[gs.groups.roomId] || null : null,
+              }
+            : null,
+          subject: gs.groups?.subjects
+            ? { id: gs.groups.subjects.id, name: gs.groups.subjects.name, color: gs.groups.subjects.color || null }
+            : null,
         };
       });
 
@@ -63,7 +92,7 @@ const groupStudents = ((student.group_students as any[]) || [])
       groupStudents.filter((gs: any) => gs.group?.id).map((gs: any) => [gs.group.id, gs.group.name])
     );
 
-    const payments = (Array.isArray(student.payments) ? student.payments : student.payments ? [student.payments] : [])
+    const payments = paymentsRaw
       .map((p: any) => ({
         id: p.id,
         month: p.month,
@@ -78,9 +107,6 @@ const groupStudents = ((student.group_students as any[]) || [])
       }))
       .sort((a: any, b: any) => new Date(b.month).getTime() - new Date(a.month).getTime());
 
-    // A session is paid when the student's payment covers that session's month
-    // AND (for group-scoped payments) its group. Payments without a groupId
-    // (legacy) cover the whole month regardless of group.
     const paidPayments = payments.filter((p: any) => p.status === "paid");
     const paidGroupMonths = new Set(
       paidPayments.filter((p: any) => p.groupId).map((p: any) => `${p.groupId}:${p.month.slice(0, 7)}`)
@@ -95,8 +121,8 @@ const groupStudents = ((student.group_students as any[]) || [])
         const sessionGroupId = a.sessions?.groupId || null;
         const monthKey = sessionDate ? String(sessionDate).slice(0, 7) : null;
         const paid = Boolean(
-          sessionGroupId && monthKey && paidGroupMonths.has(`${sessionGroupId}:${monthKey}`)
-          || (monthKey && paidMonthsAnyGroup.has(monthKey))
+          (sessionGroupId && monthKey && paidGroupMonths.has(`${sessionGroupId}:${monthKey}`)) ||
+            (monthKey && paidMonthsAnyGroup.has(monthKey))
         );
         return {
           id: a.id,
@@ -111,27 +137,20 @@ const groupStudents = ((student.group_students as any[]) || [])
           paid,
         };
       })
-      .sort((a: any, b: any) => new Date(a.sessionDate || a.markedAt).getTime() - new Date(b.sessionDate || b.markedAt).getTime());
+      .sort(
+        (a: any, b: any) =>
+          new Date(a.sessionDate || a.markedAt).getTime() - new Date(b.sessionDate || b.markedAt).getTime()
+      );
 
-    // Cancelled sessions are not counted in the attendance summary — they
-    // are listed in the history as cancelled but never affect the stats.
     const activeAttendances = attendances.filter((a: any) => a.sessionStatus !== "cancelled");
     const presentCount = activeAttendances.filter((a: any) => a.status === "present" || a.status === "late").length;
     const absentCount = activeAttendances.filter((a: any) => a.status === "absent").length;
     const excusedCount = activeAttendances.filter((a: any) => a.status === "excused").length;
 
-    // The amount the student is expected to pay is the sum of their active
-    // groups' dues, even if no payment records exist yet.
     const groupsDue = groupStudents.reduce((sum: number, gs: any) => sum + (gs.group?.pricePerSession || 0), 0);
     const paymentsDue = payments.reduce((sum: number, p: any) => sum + p.amountDue, 0);
     const totalDue = Math.max(groupsDue, paymentsDue);
     const totalPaid = payments.reduce((sum: number, p: any) => sum + p.amountPaid, 0);
-
-    const { data: tenant } = await supabase
-      .from("tenants")
-      .select("name, schoolPhone, schoolLogo")
-      .eq("id", tenantId)
-      .single();
 
     return Response.json({
       student: {
@@ -173,4 +192,3 @@ const groupStudents = ((student.group_students as any[]) || [])
     return Response.json({ error: e.message }, { status: 500 });
   }
 }
-

@@ -6,11 +6,18 @@ import { revalidateFullApp } from "@/lib/cache";
 import { getT } from "@/lib/i18n";
 import type { ActionResult } from "./students";
 import { toDateInputValue } from "@/lib/group-form";
+import {
+  formatLocalYmd,
+  isLikelyBakedYearEnd,
+  pickEarlierYmd,
+  pickLaterYmd,
+  resolveGroupSessionRange,
+} from "@/lib/session-dates";
 
 export type SessionType = "regular" | "extra" | "makeup";
 
 /** Finds an IDENTICAL non-cancelled session (same group, date, start AND end
- *  time) â€” a pure double-click duplicate. Multiple lessons per day at
+ *  time) — a pure double-click duplicate. Multiple lessons per day at
  *  different times are intentionally allowed. */
 async function findIdenticalSession(
   supabase: any,
@@ -32,15 +39,32 @@ async function findIdenticalSession(
     .neq("status", "cancelled");
   return (data && data[0]) || null;
 }
-export type SessionStatus = "scheduled" | "completed" | "cancelled";
 
-function parseLocalYmd(value: unknown): Date | null {
-  const s = toDateInputValue(value);
-  if (!s) return null;
-  const [y, m, d] = s.split("-").map(Number);
-  if (!y || !m || !d) return null;
-  return new Date(y, m - 1, d);
+/** Future regular lessons only — never extras, makeups, or already-taught days. */
+async function deleteFutureRegularScheduled(
+  supabase: any,
+  tenantId: string,
+  groupId: string
+): Promise<void> {
+  const todayStr = formatLocalYmd(new Date());
+  const { data: rows } = await supabase
+    .from("sessions")
+    .select("id, sessionDate, type")
+    .eq("tenantId", tenantId)
+    .eq("groupId", groupId)
+    .eq("status", "scheduled");
+  const toDelete = (rows || [])
+    .filter((s: any) => {
+      if (s.type === "extra" || s.type === "makeup") return false;
+      const day = toDateInputValue(s.sessionDate);
+      return !!day && day > todayStr;
+    })
+    .map((s: any) => s.id);
+  if (toDelete.length === 0) return;
+  await supabase.from("sessions").delete().in("id", toDelete).eq("tenantId", tenantId);
 }
+
+export type SessionStatus = "scheduled" | "completed" | "cancelled";
 
 export async function getSchoolYearSettings() {
   const ctx = await getTenantContext();
@@ -59,23 +83,70 @@ export async function getSchoolYearSettings() {
       .maybeSingle();
     data = d2;
   }
-  return data ? { schoolYearStart: data.schoolYearStart, schoolYearEnd: data.schoolYearEnd } : null;
+  const { data: tenant } = await ctx.supabase
+    .from("tenants")
+    .select("schoolYearStart, schoolYearEnd")
+    .eq("id", ctx.tenantId)
+    .maybeSingle();
+  const schoolYearStart = pickEarlierYmd(data?.schoolYearStart, tenant?.schoolYearStart);
+  // If one source still has 2027 and the other 2032, keep the later end
+  const schoolYearEnd = pickLaterYmd(data?.schoolYearEnd, tenant?.schoolYearEnd);
+  return schoolYearStart && schoolYearEnd
+    ? { schoolYearStart, schoolYearEnd }
+    : null;
+}
+
+function isExplicitCustomEnd(row: { expiresAtCustom?: unknown }): boolean {
+  return Number((row as any)?.expiresAtCustom) === 1;
+}
+
+async function customEndForGroup(
+  supabase: any,
+  tenantId: string,
+  yearEnd: unknown,
+  groupRow: { expiresAt?: unknown; expiresAtCustom?: unknown }
+): Promise<boolean> {
+  if (isExplicitCustomEnd(groupRow)) return true;
+  const { data: all } = await supabase
+    .from("groups")
+    .select("expiresAt")
+    .eq("tenantId", tenantId);
+  const baked = isLikelyBakedYearEnd(
+    groupRow?.expiresAt,
+    yearEnd,
+    (all || []).map((g: any) => g.expiresAt)
+  );
+  return !baked && !!toDateInputValue(groupRow?.expiresAt);
+}
+
+async function insertSessionBatches(
+  supabase: any,
+  rows: Record<string, unknown>[]
+): Promise<string | null> {
+  const SIZE = 400;
+  for (let i = 0; i < rows.length; i += SIZE) {
+    const { error } = await supabase.from("sessions").insert(rows.slice(i, i + SIZE));
+    if (error) return error.message;
+  }
+  return null;
 }
 
 export async function updateSchoolYearSettings(formData: FormData): Promise<ActionResult> {
   const t = await getT();
   try {
     const ctx = await requirePermission("settings.update");
-    const schoolYearStart = formData.get("schoolYearStart") as string;
-    const schoolYearEnd = formData.get("schoolYearEnd") as string;
+    const schoolYearStart = toDateInputValue(formData.get("schoolYearStart"));
+    const schoolYearEnd = toDateInputValue(formData.get("schoolYearEnd"));
     if (!schoolYearStart || !schoolYearEnd) return { error: t("errors.invalid_data") };
 
     const { data: existing } = await ctx.supabase
       .from("settings")
-      .select("userId")
+      .select("userId, schoolYearEnd")
       .eq("userId", ctx.userId)
       .eq("tenantId", ctx.tenantId)
       .maybeSingle();
+
+    const oldEnd = toDateInputValue(existing?.schoolYearEnd);
 
     if (existing) {
       await ctx.supabase
@@ -89,9 +160,25 @@ export async function updateSchoolYearSettings(formData: FormData): Promise<Acti
         .insert({ userId: ctx.userId, tenantId: ctx.tenantId, schoolYearStart, schoolYearEnd });
     }
 
+    // Groups that had the old/new year-end baked into expiresAt → follow year (null)
+    const { data: groups } = await ctx.supabase
+      .from("groups")
+      .select("id, expiresAt")
+      .eq("tenantId", ctx.tenantId);
+    for (const g of groups || []) {
+      const gEnd = toDateInputValue((g as any).expiresAt);
+      if (gEnd && (gEnd === oldEnd || gEnd === schoolYearEnd)) {
+        await ctx.supabase
+          .from("groups")
+          .update({ expiresAt: null })
+          .eq("id", (g as any).id)
+          .eq("tenantId", ctx.tenantId);
+      }
+    }
+
     const result = await regenerateAllFutureSessions();
     revalidateFullApp();
-    return { success: true };
+    return result?.error ? result : { success: true };
   } catch (e) {
     if (e instanceof AuthError) return { error: e.message };
     return { error: t("common.error") };
@@ -107,31 +194,57 @@ export async function generateAllSessions(): Promise<ActionResult> {
     const yearEnd = schoolYear?.schoolYearEnd;
     if (!yearStart || !yearEnd) return { error: t("errors.school_year_not_set") };
 
-    const { data: groups } = await ctx.supabase.from("groups").select("id, name").eq("tenantId", ctx.tenantId).eq("status", "active");
+    const { data: groups } = await ctx.supabase
+      .from("groups")
+      .select("id, name, expiresAt, expiresAtCustom")
+      .eq("tenantId", ctx.tenantId)
+      .eq("status", "active");
     if (!groups || groups.length === 0) return { error: t("errors.no_active_groups") };
 
-    const startDate = new Date(yearStart);
-    const endDate = new Date(yearEnd);
+    const allEnds = groups.map((g: any) => g.expiresAt);
     const now = new Date().toISOString();
     for (const group of groups) {
-      const { data: slots } = await ctx.supabase.from("schedule_slots").select("*").eq("groupId", group.id).eq("tenantId", ctx.tenantId);
+      const baked = !isExplicitCustomEnd(group) &&
+        isLikelyBakedYearEnd((group as any).expiresAt, yearEnd, allEnds);
+      if (baked && (group as any).expiresAt) {
+        await ctx.supabase
+          .from("groups")
+          .update({ expiresAt: null, expiresAtCustom: 0 })
+          .eq("id", group.id)
+          .eq("tenantId", ctx.tenantId);
+        (group as any).expiresAt = null;
+      }
+      const range = resolveGroupSessionRange(yearStart, yearEnd, (group as any).expiresAt, {
+        customEnd: !baked && !!toDateInputValue((group as any).expiresAt),
+      });
+      if (!range) continue;
+
+      const { data: slots } = await ctx.supabase
+        .from("schedule_slots")
+        .select("*")
+        .eq("groupId", group.id)
+        .eq("tenantId", ctx.tenantId);
       if (!slots || slots.length === 0) continue;
 
-      const existingRes = await ctx.supabase.from("sessions").select("sessionDate, scheduleSlotId, status").eq("groupId", group.id).eq("tenantId", ctx.tenantId);
+      const existingRes = await ctx.supabase
+        .from("sessions")
+        .select("sessionDate, scheduleSlotId, status")
+        .eq("groupId", group.id)
+        .eq("tenantId", ctx.tenantId);
       const existingMap = new Map<string, string>();
       for (const ex of existingRes.data || []) {
-        existingMap.set(`${ex.sessionDate}|${ex.scheduleSlotId}`, ex.status);
+        existingMap.set(`${toDateInputValue(ex.sessionDate)}|${ex.scheduleSlotId}`, ex.status);
       }
 
       const sessionsToCreate: Record<string, unknown>[] = [];
-      const current = new Date(startDate);
-      while (current <= endDate) {
-        const dateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}-${String(current.getDate()).padStart(2, "0")}`;
+      const current = new Date(range.start);
+      while (current.getTime() <= range.end.getTime()) {
+        const dateStr = formatLocalYmd(current);
         for (const slot of slots) {
-          if (slot.dayOfWeek === current.getDay()) {
+          if (Number(slot.dayOfWeek) === current.getDay()) {
             const key = `${dateStr}|${slot.id}`;
             const existingStatus = existingMap.get(key);
-            if (existingStatus === "cancelled" || existingStatus === "completed") continue;
+            if (existingStatus) continue;
             sessionsToCreate.push({
               id: randomUUID(),
               tenantId: ctx.tenantId,
@@ -151,9 +264,9 @@ export async function generateAllSessions(): Promise<ActionResult> {
       }
 
       if (sessionsToCreate.length > 0) {
-        await ctx.supabase.from("sessions").delete().eq("groupId", group.id).eq("tenantId", ctx.tenantId).eq("status", "scheduled");
-        const { error: insertError } = await ctx.supabase.from("sessions").insert(sessionsToCreate);
-        if (insertError) return { error: insertError.message };
+        await deleteFutureRegularScheduled(ctx.supabase, ctx.tenantId, group.id);
+        const insertError = await insertSessionBatches(ctx.supabase, sessionsToCreate);
+        if (insertError) return { error: insertError };
       }
     }
 
@@ -168,23 +281,43 @@ export async function regenerateAllFutureSessions(): Promise<ActionResult> {
   const t = await getT();
   try {
     const ctx = await requirePermission("settings.update");
-    const { data: groups } = await ctx.supabase.from("groups").select("id").eq("tenantId", ctx.tenantId);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-    for (const group of groups || []) {
-      const { data: futureUnattended } = await ctx.supabase
-        .from("sessions")
-        .select("id")
-        .eq("groupId", group.id)
-        .eq("tenantId", ctx.tenantId)
-        .gte("sessionDate", todayStr)
-        .not("status", "in", "('completed','cancelled')");
-      const toDelete = (futureUnattended || []).map((s: any) => s.id);
-      if (toDelete.length > 0) {
-        await ctx.supabase.from("attendances").delete().in("sessionId", toDelete).eq("tenantId", ctx.tenantId);
-        await ctx.supabase.from("sessions").delete().in("id", toDelete).eq("tenantId", ctx.tenantId);
+    const schoolYear = await getSchoolYearSettings();
+    const yearEnd = toDateInputValue(schoolYear?.schoolYearEnd);
+
+    // Repair: baked copies of school-year end → follow year dynamically
+    if (yearEnd) {
+      const { data: groupsFix } = await ctx.supabase
+        .from("groups")
+        .select("id, expiresAt")
+        .eq("tenantId", ctx.tenantId);
+      const yearStart = toDateInputValue(schoolYear?.schoolYearStart);
+      for (const g of groupsFix || []) {
+        const gEnd = toDateInputValue((g as any).expiresAt);
+        if (!gEnd) continue;
+        // Exact match on current year end = "follow year"
+        if (gEnd === yearEnd) {
+          await ctx.supabase
+            .from("groups")
+            .update({ expiresAt: null })
+            .eq("id", (g as any).id)
+            .eq("tenantId", ctx.tenantId);
+          continue;
+        }
+        // Stale copy from a previous year end: before current year start
+        // (custom ends are always within the active school year)
+        if (yearStart && gEnd < yearStart) {
+          await ctx.supabase
+            .from("groups")
+            .update({ expiresAt: null })
+            .eq("id", (g as any).id)
+            .eq("tenantId", ctx.tenantId);
+        }
       }
+    }
+
+    const { data: groups } = await ctx.supabase.from("groups").select("id").eq("tenantId", ctx.tenantId);
+    for (const group of groups || []) {
+      await deleteFutureRegularScheduled(ctx.supabase, ctx.tenantId, group.id);
       await generateGroupSessions(group.id);
     }
     revalidateFullApp();
@@ -199,7 +332,7 @@ export async function generateGroupSessions(groupId: string): Promise<ActionResu
   const t = await getT();
   try {
     const ctx = await requirePermission("groups.update");
-    
+
     const schoolYear = await getSchoolYearSettings();
 
     const yearStart = schoolYear?.schoolYearStart;
@@ -210,46 +343,60 @@ export async function generateGroupSessions(groupId: string): Promise<ActionResu
 
     const { data: groupRow } = await ctx.supabase
       .from("groups")
-      .select("expiresAt")
+      .select("expiresAt, expiresAtCustom")
       .eq("id", groupId)
       .eq("tenantId", ctx.tenantId)
       .maybeSingle();
 
-    const startDate = parseLocalYmd(yearStart);
-    const yearEndDate = parseLocalYmd(yearEnd);
-    if (!startDate || !yearEndDate) {
+    const customEnd = await customEndForGroup(ctx.supabase, ctx.tenantId, yearEnd, groupRow || {});
+    if (!customEnd && groupRow?.expiresAt) {
+      await ctx.supabase
+        .from("groups")
+        .update({ expiresAt: null, expiresAtCustom: 0 })
+        .eq("id", groupId)
+        .eq("tenantId", ctx.tenantId);
+      (groupRow as any).expiresAt = null;
+    }
+
+    const range = resolveGroupSessionRange(yearStart, yearEnd, groupRow?.expiresAt, { customEnd });
+    if (!range) {
       return { error: t("errors.school_year_not_set") };
     }
-    const groupEnd = parseLocalYmd(groupRow?.expiresAt);
-    const endDate =
-      groupEnd && groupEnd.getTime() < yearEndDate.getTime() ? groupEnd : yearEndDate;
+    const { start: startDate, end: endDate } = range;
 
     const now = new Date().toISOString();
-    const { data: slots } = await ctx.supabase.from("schedule_slots").select("*").eq("groupId", groupId).eq("tenantId", ctx.tenantId);
+    const { data: slots } = await ctx.supabase
+      .from("schedule_slots")
+      .select("*")
+      .eq("groupId", groupId)
+      .eq("tenantId", ctx.tenantId);
     if (!slots || slots.length === 0) {
       return { success: true };
     }
 
-    const existingRes = await ctx.supabase.from("sessions").select("sessionDate, scheduleSlotId, status").eq("groupId", groupId).eq("tenantId", ctx.tenantId);
+    const existingRes = await ctx.supabase
+      .from("sessions")
+      .select("sessionDate, scheduleSlotId, status")
+      .eq("groupId", groupId)
+      .eq("tenantId", ctx.tenantId);
     const existingMap = new Map<string, Set<string>>();
     for (const ex of existingRes.data || []) {
-      const key = `${ex.sessionDate}|${ex.scheduleSlotId}`;
+      const key = `${toDateInputValue(ex.sessionDate)}|${ex.scheduleSlotId}`;
       if (!existingMap.has(key)) existingMap.set(key, new Set());
       existingMap.get(key)!.add(ex.status);
     }
-    
+
     const sessionsToCreate: Record<string, unknown>[] = [];
     const seenInBatch = new Set<string>();
     const current = new Date(startDate);
+    // Inclusive through the last day of school year / group end
     while (current.getTime() <= endDate.getTime()) {
-      const dateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}-${String(current.getDate()).padStart(2, "0")}`;
+      const dateStr = formatLocalYmd(current);
       for (const slot of slots) {
         if (Number(slot.dayOfWeek) === current.getDay()) {
           const key = `${dateStr}|${slot.id}`;
           const existing = existingMap.get(key);
-          // Preserve completed/cancelled history; anything else gets recreated
-          // below after the scheduled purge.
-          if (existing && (existing.has("completed") || existing.has("cancelled"))) continue;
+          if (existing && existing.size > 0) continue;
           if (seenInBatch.has(key)) continue;
           seenInBatch.add(key);
           sessionsToCreate.push({
@@ -270,22 +417,25 @@ export async function generateGroupSessions(groupId: string): Promise<ActionResu
       current.setDate(current.getDate() + 1);
     }
 
-    // Delete previously generated scheduled sessions
-    await ctx.supabase.from("sessions").delete().eq("groupId", groupId).eq("tenantId", ctx.tenantId).eq("status", "scheduled");
+    await deleteFutureRegularScheduled(ctx.supabase, ctx.tenantId, groupId);
 
-    // Re-read survivors (completed/cancelled) and drop any batch row whose
-    // date|slot still exists â€” guards against concurrent regenerations.
-    const survivorsRes = await ctx.supabase.from("sessions").select("sessionDate, scheduleSlotId").eq("groupId", groupId).eq("tenantId", ctx.tenantId);
-    const survivorKeys = new Set((survivorsRes.data || []).map((ex: any) => `${ex.sessionDate}|${ex.scheduleSlotId}`));
+    const survivorsRes = await ctx.supabase
+      .from("sessions")
+      .select("sessionDate, scheduleSlotId")
+      .eq("groupId", groupId)
+      .eq("tenantId", ctx.tenantId);
+    const survivorKeys = new Set(
+      (survivorsRes.data || []).map((ex: any) => `${toDateInputValue(ex.sessionDate)}|${ex.scheduleSlotId}`)
+    );
     const finalBatch = sessionsToCreate.filter((s) => {
       const key = `${String(s.sessionDate)}|${String(s.scheduleSlotId)}`;
       return !survivorKeys.has(key);
     });
 
     if (finalBatch.length > 0) {
-      const { error: insertError } = await ctx.supabase.from("sessions").insert(finalBatch);
+      const insertError = await insertSessionBatches(ctx.supabase, finalBatch);
       if (insertError) {
-        return { error: insertError.message };
+        return { error: insertError };
       }
     }
 
@@ -300,21 +450,7 @@ export async function regenerateGroupFutureSessions(groupId: string): Promise<Ac
   const t = await getT();
   try {
     const ctx = await requirePermission("groups.update");
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-    const { data: futureUnattended } = await ctx.supabase
-      .from("sessions")
-      .select("id")
-      .eq("groupId", groupId)
-      .eq("tenantId", ctx.tenantId)
-      .gte("sessionDate", todayStr)
-      .not("status", "in", "('completed','cancelled')");
-    const toDelete = (futureUnattended || []).map((s: any) => s.id);
-    if (toDelete.length > 0) {
-      await ctx.supabase.from("attendances").delete().in("sessionId", toDelete).eq("tenantId", ctx.tenantId);
-      await ctx.supabase.from("sessions").delete().in("id", toDelete).eq("tenantId", ctx.tenantId);
-    }
+    await deleteFutureRegularScheduled(ctx.supabase, ctx.tenantId, groupId);
     return await generateGroupSessions(groupId);
   } catch (e) {
     if (e instanceof AuthError) return { error: e.message };

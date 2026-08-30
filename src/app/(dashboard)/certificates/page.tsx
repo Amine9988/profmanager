@@ -10,7 +10,8 @@ import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter,
 } from "@/components/ui/dialog";
-import { ScrollText, Plus, Trash2, Settings2, FileText, Upload, RotateCcw, Pencil, Download, X, Printer, Loader2 } from "lucide-react";
+import { ScrollText, Plus, Trash2, Settings2, FileText, Upload, RotateCcw, Pencil, Download, X, Printer, Loader2 } from "@/lib/lucide";
+import { StudentSearchSelect } from "@/components/shared/student-search-select";
 import { toast } from "sonner";
 
 interface Certificate {
@@ -25,15 +26,9 @@ interface Certificate {
   createdAt: string;
 }
 
-interface Student {
-  id: string;
-  fullName: string;
-}
-
 export default function CertificatesPage() {
   const t = useT();
   const [certificates, setCertificates] = useState<Certificate[]>([]);
-  const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -68,12 +63,8 @@ export default function CertificatesPage() {
 
   async function load() {
     try {
-      const [certRes, studRes] = await Promise.all([
-        fetch("/api/certificates"),
-        fetch("/api/students?status=active"),
-      ]);
+      const certRes = await fetch("/api/certificates");
       if (certRes.ok) setCertificates(await certRes.json());
-      if (studRes.ok) setStudents(await studRes.json());
     } catch {}
     setLoading(false);
   }
@@ -429,17 +420,12 @@ export default function CertificatesPage() {
             <form onSubmit={handleGenerate} className="space-y-4">
               <div className="space-y-2">
                 <Label>{t("certificates.student")}</Label>
-                <select
+                <StudentSearchSelect
                   value={selectedStudent}
-                  onChange={(e) => setSelectedStudent(e.target.value)}
-                  className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm"
+                  onChange={(id) => setSelectedStudent(id)}
+                  placeholder={t("certificates.select_student")}
                   required
-                >
-                  <option value="">{t("certificates.select_student")}</option>
-                  {students.map((s) => (
-                    <option key={s.id} value={s.id}>{s.fullName}</option>
-                  ))}
-                </select>
+                />
               </div>
               <div className="space-y-2">
                 <Label>{t("certificates.language")}</Label>
@@ -568,17 +554,12 @@ export default function CertificatesPage() {
           <form onSubmit={handleSaveEdit} className="space-y-4">
             <div className="space-y-2">
               <Label>{t("certificates.student")}</Label>
-              <select
+              <StudentSearchSelect
                 value={editStudent}
-                onChange={(e) => setEditStudent(e.target.value)}
-                className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm"
+                onChange={(id) => setEditStudent(id)}
+                placeholder={t("certificates.select_student")}
                 required
-              >
-                <option value="">{t("certificates.select_student")}</option>
-                {students.map((s) => (
-                  <option key={s.id} value={s.id}>{s.fullName}</option>
-                ))}
-              </select>
+              />
             </div>
             <div className="space-y-2">
               <Label>{t("certificates.description")}</Label>

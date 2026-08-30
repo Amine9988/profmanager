@@ -24,7 +24,7 @@ import {
   BookOpen,
   ScrollText,
   Trash2,
-} from "lucide-react";
+} from "@/lib/lucide";
 
 const NAV_ITEMS = [
   { href: "/overview", key: "overview", icon: LayoutDashboard },

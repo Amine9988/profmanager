@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect } from "react";
-import { ZoomIn, ZoomOut, Maximize2, Minus } from "lucide-react";
+import { ZoomIn, ZoomOut, Maximize2, Minus } from "@/lib/lucide";
 import { CardRenderer } from "./card-templates";
 import type { StudentCardData, TenantCardData, CardTemplate, CardSize } from "./types";
 import { CARD_A7 } from "./types";

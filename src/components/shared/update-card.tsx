@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useT } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { RefreshCw, Download, Check } from "lucide-react";
+import { RefreshCw, Download, Check } from "@/lib/lucide";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 

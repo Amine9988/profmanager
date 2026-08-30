@@ -31,17 +31,10 @@ export async function GET(req: NextRequest) {
 
     const { data: movements } = await query;
 
-    const { data: totals } = await supabase
-      .from("cash_movements")
-      .select("type, amount")
-      .eq("tenantId", tenantId);
-
-    const income = (totals || [])
-      .filter((m: any) => m.type === "income")
-      .reduce((sum: number, m: any) => sum + Number(m.amount), 0);
-    const expense = (totals || [])
-      .filter((m: any) => m.type === "expense")
-      .reduce((sum: number, m: any) => sum + Number(m.amount), 0);
+    const { cashMovementStats } = await import("@/lib/db/aggregates");
+    const stats = await cashMovementStats(tenantId);
+    const income = stats.totalIncome;
+    const expense = stats.totalExpense;
 
     const monthIncome = (movements || [])
       .filter((m: any) => m.type === "income")

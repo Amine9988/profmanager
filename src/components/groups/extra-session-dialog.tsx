@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { Plus } from "lucide-react";
+import { Plus } from "@/lib/lucide";
 import { toast } from "sonner";
 import { useT } from "@/lib/i18n";
 import type { ActionResult } from "@/server/actions/students";
@@ -55,10 +55,6 @@ export function ExtraSessionDialog({ groupId }: { groupId: string }) {
               <Label htmlFor="endTime">{t("groups.end_time")}</Label>
               <Input id="endTime" name="endTime" type="time" required />
             </div>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="notes">{t("common.notes")}</Label>
-            <Input id="notes" name="notes" />
           </div>
           <DialogFooter>
             <Button type="submit" disabled={isPending}>

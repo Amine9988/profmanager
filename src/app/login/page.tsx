@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { LanguageSwitcher } from "@/components/shared/language-switcher";
 import { useT, useI18n } from "@/lib/i18n";
 import { signIn, signUp, getSessionStatus } from "@/server/actions/auth";
-import { GraduationCap, AlertCircle, Sparkles } from "lucide-react";
+import { GraduationCap, AlertCircle, Sparkles } from "@/lib/lucide";
 
 type AuthState = { error?: string };
 

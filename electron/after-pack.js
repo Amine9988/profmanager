@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const { execSync } = require("child_process");
 
 function rm(p) {
   try { fs.rmSync(p, { recursive: true, force: true }); } catch {}
@@ -33,6 +34,58 @@ function copyDeref(src, dest) {
   }
 }
 
+function walk(dir, visit) {
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const ent of entries) {
+    const p = path.join(dir, ent.name);
+    if (ent.isDirectory()) walk(p, visit);
+    else visit(p);
+  }
+}
+
+/**
+ * Downloaded ad-hoc / broken signatures make Gatekeeper say
+ * "ProfManager is damaged and can't be opened". Unsigned + quarantine
+ * is "unidentified developer", which Right-click → Open can bypass.
+ */
+function stripMacSignatures(appPath) {
+  try {
+    execSync(`xattr -cr "${appPath}"`, { stdio: "ignore", timeout: 30000 });
+  } catch {}
+
+  const targets = [appPath];
+  walk(appPath, (file) => {
+    if (/\.(app|framework|dylib|so|node)$/i.test(file) || /\/MacOS\//.test(file.replace(/\\/g, "/"))) {
+      targets.push(file);
+    }
+  });
+
+  for (const t of targets) {
+    try {
+      execSync(`codesign --remove-signature "${t}"`, { stdio: "ignore", timeout: 15000 });
+    } catch {}
+  }
+
+  try {
+    const out = execSync(`codesign -dv --verbose=2 "${appPath}" 2>&1`, {
+      encoding: "utf8",
+      timeout: 10000,
+    });
+    if (/Signature=adhoc|Authority=/i.test(out)) {
+      console.warn("[afterPack] signature still present:\n" + out.slice(0, 400));
+    } else {
+      console.log("[afterPack] app is unsigned (required for downloadable DMG)");
+    }
+  } catch {
+    console.log("[afterPack] app is unsigned (required for downloadable DMG)");
+  }
+}
+
 exports.default = async function afterPack(context) {
   if (context.electronPlatformName !== "darwin") return;
 
@@ -50,7 +103,6 @@ exports.default = async function afterPack(context) {
   }
 
   // extraResources drops node_modules via default ignore / broken pnpm links.
-  // Copy a real, dereferenced tree into the .app — same idea as the Windows flatten.
   console.log("[afterPack] copying dereferenced standalone-server into app");
   rm(destStandalone);
   copyDeref(srcStandalone, destStandalone);
@@ -67,6 +119,9 @@ exports.default = async function afterPack(context) {
   if (!fs.existsSync(destNm)) {
     throw new Error("Mac package missing standalone-server/node_modules after copy");
   }
+
+  const appPath = path.join(context.appOutDir, "ProfManager.app");
+  stripMacSignatures(appPath);
 
   console.log("[afterPack] mac package ok standalone + node_modules + adb=" + fs.existsSync(adb));
 };

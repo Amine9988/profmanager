@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
-import { Printer, FileDown, FileText } from "lucide-react";
+import { Printer, FileDown, FileText } from "@/lib/lucide";
 import { Button } from "@/components/ui/button";
 import html2canvas from "html2canvas-pro";
 import { jsPDF } from "jspdf";
