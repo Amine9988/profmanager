@@ -47,7 +47,6 @@
       "public/icon.png"
     ],
     "electronVersion": "35.7.5",
-    "electronDist": "node_modules/electron/dist",
     "afterPack": "./after-pack.js",
     "extraResources": [
       {
@@ -96,7 +95,8 @@
       ],
       "icon": "public/icon.icns",
       "category": "public.app-category.education",
-      "hardenedRuntime": true,
+      "identity": null,
+      "hardenedRuntime": false,
       "gatekeeperAssess": false,
       "entitlements": "entitlements.mac.plist",
       "entitlementsInherit": "entitlements.mac.plist",
