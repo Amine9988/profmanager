@@ -55,6 +55,8 @@ jobs:
           test -f public/icon.icns
           test -f public/icon.png
           npm install --no-fund --no-audit
+          node ../scripts/make-dmg-background.js
+          test -f public/dmg-background.png
       - name: Build DMG
         working-directory: electron
         run: |
