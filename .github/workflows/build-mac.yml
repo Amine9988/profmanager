@@ -34,6 +34,14 @@ jobs:
           STANDALONE_ONLY: "1"
       - name: Fetch Darwin platform-tools
         run: node scripts/fetch-mac-platform-tools.js
+      - name: Install electron-builder locally
+        working-directory: electron
+        run: npm install --omit=dev --no-fund --no-audit
+      - name: Verify standalone tree
+        run: |
+          test -f electron/standalone-server/server.js
+          test -d electron/standalone-server/node_modules
+          echo "standalone ok"
       - name: Build DMG
         working-directory: electron
         run: npx electron-builder --mac dmg --${{ matrix.arch }} --publish never
