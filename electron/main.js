@@ -159,10 +159,9 @@ function killServer() {
         timeout: 5000,
       });
     } else {
-      try { process.kill(-pid, "SIGTERM"); } catch {}
-      try { execSync("kill -TERM -" + pid, { stdio: "ignore", timeout: 3000 }); } catch {}
-      try { execSync("kill -KILL -" + pid, { stdio: "ignore", timeout: 3000 }); } catch {}
-      try { serverChild.kill("SIGKILL"); } catch {}
+      try { serverChild.kill("SIGTERM"); } catch {}
+      try { execSync("kill -TERM " + pid, { stdio: "ignore", timeout: 3000 }); } catch {}
+      try { execSync("kill -KILL " + pid, { stdio: "ignore", timeout: 3000 }); } catch {}
     }
   } catch (e) {
     try { serverChild.kill(); } catch {}
@@ -319,7 +318,7 @@ function spawnServer(standaloneDir, port) {
       LOCAL_DB_PATH: resolveDbPath(standaloneDir),
     },
     stdio: ["ignore", "pipe", "pipe"],
-    detached: process.platform !== "win32",
+    detached: false,
   });
 
   serverChild = child;
@@ -683,8 +682,23 @@ async function launchMainApp() {
     }
 }
 
+function clearMacQuarantine() {
+  if (process.platform !== "darwin") return;
+  try {
+    const exe = process.execPath.replace(/\\/g, "/");
+    const appBundle = exe.replace(/\/Contents\/MacOS\/[^/]+$/, "");
+    if (appBundle.endsWith(".app")) {
+      execSync('xattr -cr "' + appBundle + '"', { stdio: "ignore", timeout: 8000 });
+      log("cleared quarantine on " + appBundle);
+    }
+  } catch (e) {
+    log("quarantine clear skipped: " + (e.message || e));
+  }
+}
+
 app.whenReady().then(() => {
   log("ready platform=" + process.platform + " arch=" + process.arch);
+  clearMacQuarantine();
   if (process.platform === "darwin" && app.dock) {
     try {
       const ic = resolveIcon();
@@ -702,7 +716,23 @@ app.whenReady().then(() => {
   }
 });
 
+app.on("activate", () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    focusAppWindow();
+    return;
+  }
+  if (activationWindow && !activationWindow.isDestroyed()) {
+    activationWindow.show();
+    activationWindow.focus();
+  }
+});
+
 app.on("window-all-closed", () => {
+  if (process.platform === "darwin" && !isQuitting) {
+    log("all windows closed, staying in dock");
+    return;
+  }
   if (!isQuitting && serverOwned) {
     log("all windows closed, keeping app alive in tray");
   } else {

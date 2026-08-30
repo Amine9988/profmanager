@@ -1,6 +1,6 @@
 {
   "name": "profmanager-desktop",
-  "version": "1.0.33",
+  "version": "1.0.34",
   "description": "ProfManager — Gestion de cours particuliers",
   "main": "main.js",
   "scripts": {
@@ -98,6 +98,7 @@
       "identity": null,
       "hardenedRuntime": false,
       "gatekeeperAssess": false,
+      "forceCodeSigning": false,
       "entitlements": "entitlements.mac.plist",
       "entitlementsInherit": "entitlements.mac.plist",
       "artifactName": "ProfManager Setup ${version}-${arch}.${ext}",
@@ -113,27 +114,34 @@
       "icon": "public/icon.icns",
       "iconSize": 80,
       "window": {
-        "width": 540,
-        "height": 420
+        "width": 560,
+        "height": 480
       },
       "contents": [
         {
           "x": 140,
-          "y": 150,
+          "y": 140,
           "type": "file"
         },
         {
           "x": 400,
-          "y": 150,
+          "y": 140,
           "type": "link",
           "path": "/Applications"
         },
         {
-          "x": 270,
-          "y": 330,
+          "x": 140,
+          "y": 340,
           "type": "file",
           "path": "install-mac.command",
-          "name": "Install ProfManager.command"
+          "name": "تثبيت ProfManager.command"
+        },
+        {
+          "x": 400,
+          "y": 340,
+          "type": "file",
+          "path": "open-first.html",
+          "name": "اقرأني أولاً.html"
         }
       ]
     },

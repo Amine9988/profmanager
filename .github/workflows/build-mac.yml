@@ -43,6 +43,8 @@ jobs:
         working-directory: electron
         run: |
           chmod +x install-mac.command
+          test -f public/icon.icns
+          test -f public/icon.png
           npm install --no-fund --no-audit
       - name: Build DMG
         working-directory: electron
