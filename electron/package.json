@@ -111,7 +111,6 @@
     "dmg": {
       "title": "ProfManager ${version}",
       "background": "dmg-background.png",
-      "backgroundColor": "#ecf2f8",
       "icon": "icon.icns",
       "iconSize": 96,
       "window": {
