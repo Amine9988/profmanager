@@ -39,9 +39,12 @@ jobs:
           test -f electron/standalone-server/server.js
           test -d electron/standalone-server/node_modules
           echo "standalone ok"
+      - name: Install Electron app toolchain
+        working-directory: electron
+        run: npm install --no-fund --no-audit
       - name: Build DMG
         working-directory: electron
-        run: npx electron-builder --mac dmg --${{ matrix.arch }} --publish never
+        run: ./node_modules/.bin/electron-builder --mac dmg --${{ matrix.arch }} --publish never
         env:
           CI: "false"
           CSC_LINK: ${{ secrets.CSC_LINK }}
