@@ -13,9 +13,21 @@ const VERSION = PKG.version;
 
 function walk(dir, acc = []) {
   if (!fs.existsSync(dir)) return acc;
-  for (const name of fs.readdirSync(dir)) {
+  let names;
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return acc;
+  }
+  for (const name of names) {
     const p = path.join(dir, name);
-    const st = fs.statSync(p);
+    if (name.endsWith(".app") || name === "mac" || name === "mac-arm64" || name === "win-unpacked") continue;
+    let st;
+    try {
+      st = fs.statSync(p);
+    } catch {
+      continue;
+    }
     if (st.isDirectory()) walk(p, acc);
     else acc.push(p);
   }
@@ -23,7 +35,10 @@ function walk(dir, acc = []) {
 }
 
 const all = walk(DIST);
-const dmgs = all.filter((f) => f.toLowerCase().endsWith(".dmg"));
+const dmgs = all.filter((f) => {
+  const base = path.basename(f);
+  return base.toLowerCase().endsWith(".dmg") && base.includes(VERSION);
+});
 if (!dmgs.length) {
   console.error("No .dmg found under", DIST);
   process.exit(1);
